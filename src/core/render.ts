@@ -42,9 +42,9 @@ export class RenderEngine {
     job: Job,
     events?: RenderEvents
   ): Promise<Job> {
-    const outputDir = path.join(productRoot, "output");
+    const outputDir = path.join(productRoot, "output", product.slug);
     const partsDir = path.join(outputDir, ".parts");
-    const cacheDir = path.join(productRoot, "cache", "ingest");
+    const cacheDir = path.join(productRoot, "cache", product.slug, "ingest");
     fs.mkdirSync(partsDir, { recursive: true });
 
     const specHash = computeSpecHash(product.video, product.audio);

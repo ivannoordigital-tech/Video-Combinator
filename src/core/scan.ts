@@ -52,10 +52,10 @@ export class ScanEngine {
       },
     };
 
-    const cacheDir = path.join(productRoot, "cache");
+    const cacheDir = path.join(productRoot, "cache", product.slug);
 
     for (const kind of kinds) {
-      const dirPath = path.join(productRoot, "database", folderNames[kind]);
+      const dirPath = path.join(productRoot, "database", product.slug, folderNames[kind]);
       if (!fs.existsSync(dirPath)) {
         fs.mkdirSync(dirPath, { recursive: true });
       }

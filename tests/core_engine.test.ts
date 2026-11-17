@@ -24,25 +24,25 @@ describe("Fase 1: Core Engine Integration Suite", () => {
   });
 
   beforeAll(() => {
-    fs.mkdirSync(path.join(TEST_ROOT, "database", "hooks"), { recursive: true });
-    fs.mkdirSync(path.join(TEST_ROOT, "database", "bodies"), { recursive: true });
-    fs.mkdirSync(path.join(TEST_ROOT, "database", "ctas"), { recursive: true });
+    fs.mkdirSync(path.join(TEST_ROOT, "database", product.slug, "hooks"), { recursive: true });
+    fs.mkdirSync(path.join(TEST_ROOT, "database", product.slug, "bodies"), { recursive: true });
+    fs.mkdirSync(path.join(TEST_ROOT, "database", product.slug, "ctas"), { recursive: true });
     fs.mkdirSync(path.join(TEST_ROOT, "cache"), { recursive: true });
-    fs.mkdirSync(path.join(TEST_ROOT, "output"), { recursive: true });
-    fs.mkdirSync(path.join(TEST_ROOT, "state"), { recursive: true });
+    fs.mkdirSync(path.join(TEST_ROOT, "output", product.slug), { recursive: true });
+    fs.mkdirSync(path.join(TEST_ROOT, "state", product.slug), { recursive: true });
 
     // Copy fixture baseline clips: hook.mp4, body.mp4, cta.mp4
     fs.copyFileSync(
       path.join(FIXTURES_DIR, "01_baseline", "hook.mp4"),
-      path.join(TEST_ROOT, "database", "hooks", "hook-01.mp4")
+      path.join(TEST_ROOT, "database", product.slug, "hooks", "hook-01.mp4")
     );
     fs.copyFileSync(
       path.join(FIXTURES_DIR, "01_baseline", "body.mp4"),
-      path.join(TEST_ROOT, "database", "bodies", "body-01.mp4")
+      path.join(TEST_ROOT, "database", product.slug, "bodies", "body-01.mp4")
     );
     fs.copyFileSync(
       path.join(FIXTURES_DIR, "01_baseline", "cta.mp4"),
-      path.join(TEST_ROOT, "database", "ctas", "cta-01.mp4")
+      path.join(TEST_ROOT, "database", product.slug, "ctas", "cta-01.mp4")
     );
   });
 
@@ -90,7 +90,7 @@ describe("Fase 1: Core Engine Integration Suite", () => {
     });
     registry = await ScanEngine.scanProductAssets(TEST_ROOT, product, registry);
 
-    const outputDir = path.join(TEST_ROOT, "output");
+    const outputDir = path.join(TEST_ROOT, "output", product.slug);
     const manifest = ManifestManager.loadManifest(outputDir, product);
 
     const plan = await PlanEngine.createPlan(TEST_ROOT, product, registry, manifest, "new");
@@ -108,7 +108,7 @@ describe("Fase 1: Core Engine Integration Suite", () => {
     });
     registry = await ScanEngine.scanProductAssets(TEST_ROOT, product, registry);
 
-    const outputDir = path.join(TEST_ROOT, "output");
+    const outputDir = path.join(TEST_ROOT, "output", product.slug);
     const manifest = ManifestManager.loadManifest(outputDir, product);
     const plan = await PlanEngine.createPlan(TEST_ROOT, product, registry, manifest, "new");
 
@@ -155,7 +155,7 @@ describe("Fase 1: Core Engine Integration Suite", () => {
     });
     registry = await ScanEngine.scanProductAssets(TEST_ROOT, product, registry);
 
-    const outputDir = path.join(TEST_ROOT, "output");
+    const outputDir = path.join(TEST_ROOT, "output", product.slug);
     const manifest = ManifestManager.loadManifest(outputDir, product);
 
     const plan = await PlanEngine.createPlan(TEST_ROOT, product, registry, manifest, "new");
@@ -165,7 +165,7 @@ describe("Fase 1: Core Engine Integration Suite", () => {
   });
 
   it("T1.11: Report - menghasilkan CSV UTF-8 dengan BOM dan CRLF", () => {
-    const outputDir = path.join(TEST_ROOT, "output");
+    const outputDir = path.join(TEST_ROOT, "output", product.slug);
     const manifest = ManifestManager.loadManifest(outputDir, product);
 
     const reportPath = ReportGenerator.saveReport(outputDir, manifest, product);

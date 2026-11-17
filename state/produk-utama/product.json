@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "slug": "produk-utama",
+  "displayName": "Produk Utama",
+  "createdAt": "2026-11-17T06:10:55.889Z",
+  "video": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "fit": "pad",
+    "codec": "h264",
+    "profile": "high",
+    "level": "4.1",
+    "pixFmt": "yuv420p",
+    "crf": 18,
+    "preset": "veryfast",
+    "gop": 60
+  },
+  "audio": {
+    "codec": "aac",
+    "sampleRate": 48000,
+    "channels": 2,
+    "bitrate": "192k",
+    "loudnorm": true,
+    "targetLufs": -16
+  },
+  "render": {
+    "mode": "fast",
+    "workers": 3,
+    "faststart": true
+  },
+  "naming": {
+    "includeHash": true,
+    "maxSlugLength": 28
+  },
+  "limits": {
+    "maxCombinations": 2000,
+    "warnCombinations": 500,
+    "maxAssetSizeMb": 1024,
+    "minClipSeconds": 0.5,
+    "maxClipSeconds": 120
+  }
+}

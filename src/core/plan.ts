@@ -76,7 +76,7 @@ export class PlanEngine {
       }
     }
 
-    const outputDir = path.join(productRoot, "output");
+    const outputDir = path.join(productRoot, "output", product.slug);
 
     let doneCount = 0;
     let staleCount = 0;

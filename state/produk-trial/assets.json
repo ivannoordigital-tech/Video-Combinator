@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "specHash": "d19249c28ab1",
+  "assets": {
+    "hook": {
+      "hook1.mp4": {
+        "slug": "hook1",
+        "enabled": true,
+        "sha256": "d83bcbe3495c334b55b589992ddaf36087f6da9edf73b97c2d79096889bc246f",
+        "sizeBytes": 140276,
+        "mtimeMs": 1794895956772.1384,
+        "durationSeconds": 3,
+        "origin": "scan",
+        "status": "READY",
+        "ingestedAt": "2026-11-17T06:14:53.797Z",
+        "error": null
+      },
+      "hook2.mp4": {
+        "slug": "hook2",
+        "enabled": true,
+        "sha256": "53fd5c632947d84c86ba1fa7ca2d5712b8504c98950d1ed71c2c240496960d99",
+        "sizeBytes": 142355,
+        "mtimeMs": 1794895957287.2769,
+        "durationSeconds": 3,
+        "origin": "scan",
+        "status": "READY",
+        "ingestedAt": "2026-11-17T06:14:54.786Z",
+        "error": null
+      },
+      "hook3.mp4": {
+        "slug": "hook3",
+        "enabled": true,
+        "sha256": "db674cdc2546c84fadc36aabf3e451073299955491ac44f98298ef71e3e840b6",
+        "sizeBytes": 146055,
+        "mtimeMs": 1794895957958.1558,
+        "durationSeconds": 3,
+        "origin": "scan",
+        "status": "READY",
+        "ingestedAt": "2026-11-17T06:14:55.765Z",
+        "error": null
+      }
+    },
+    "body": {
+      "body1.mp4": {
+        "slug": "body1",
+        "enabled": true,
+        "sha256": "7af60e6346d7c6068ccc49ed71cb8381c9667ed4957066fd58212ab8a76cd210",
+        "sizeBytes": 136589,
+        "mtimeMs": 1794895958509.1987,
+        "durationSeconds": 3,
+        "origin": "scan",
+        "status": "READY",
+        "ingestedAt": "2026-11-17T06:14:56.769Z",
+        "error": null
+      },
+      "body2.mp4": {
+        "slug": "body2",
+        "enabled": true,
+        "sha256": "d2f11f33176318e9174ffde2477c87ade54f538ab29c6580fec96d68e3669142",
+        "sizeBytes": 143835,
+        "mtimeMs": 1794895959085.474,
+        "durationSeconds": 3,
+        "origin": "scan",
+        "status": "READY",
+        "ingestedAt": "2026-11-17T06:14:57.912Z",
+        "error": null
+      },
+      "body3.mp4": {
+        "slug": "body3",
+        "enabled": true,
+        "sha256": "3c6b4f48f195e8b7ebf1c2809299cdae3364c018157ed3886847f4688b939d9f",
+        "sizeBytes": 141709,
+        "mtimeMs": 1794895959620.7314,
+        "durationSeconds": 3,
+        "origin": "scan",
+        "status": "READY",
+        "ingestedAt": "2026-11-17T06:14:58.834Z",
+        "error": null
+      }
+    },
+    "cta": {
+      "cta1.mp4": {
+        "slug": "cta1",
+        "enabled": true,
+        "sha256": "143059fabdaa4ece9bd26915e76951d6a21c65ba975e2337a8cf2570f75bc44f",
+        "sizeBytes": 138400,
+        "mtimeMs": 1794895960160.4106,
+        "durationSeconds": 3,
+        "origin": "scan",
+        "status": "READY",
+        "ingestedAt": "2026-11-17T06:14:59.794Z",
+        "error": null
+      },
+      "cta2.mp4": {
+        "slug": "cta2",
+        "enabled": true,
+        "sha256": "1e1b5d791ef42f346774e03e47f7f0bb48a9eedb376055e0d73a98dbea915447",
+        "sizeBytes": 134920,
+        "mtimeMs": 1794895960734.5354,
+        "durationSeconds": 3,
+        "origin": "scan",
+        "status": "READY",
+        "ingestedAt": "2026-11-17T06:15:00.776Z",
+        "error": null
+      },
+      "cta3.mp4": {
+        "slug": "cta3",
+        "enabled": true,
+        "sha256": "099c6d22e5b0d54189103eecde5bedd85623f2cfd1e7dc091fcea624c2c83153",
+        "sizeBytes": 140511,
+        "mtimeMs": 1794895961286.3457,
+        "durationSeconds": 3,
+        "origin": "scan",
+        "status": "READY",
+        "ingestedAt": "2026-11-17T06:15:02.184Z",
+        "error": null
+      }
+    }
+  }
+}

@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Combinator — Dashboard</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background-color: var(--card-bg);
+      border-bottom: 1px solid var(--card-border);
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+    }
+    .brand span {
+      background: linear-gradient(135deg, #60a5fa, #a855f7);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .product-select-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    select, input, button {
+      font-family: inherit;
+      font-size: 0.9rem;
+    }
+    select {
+      background-color: #0f172a;
+      color: #fff;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      outline: none;
+      cursor: pointer;
+    }
+    .btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-primary { background-color: var(--primary); color: #fff; }
+    .btn-primary:hover { background-color: var(--primary-hover); }
+    .btn-success { background-color: var(--success); color: #fff; }
+    .btn-danger { background-color: var(--danger); color: #fff; }
+    .btn-secondary { background-color: #334155; color: #fff; }
+    .btn-secondary:hover { background-color: #475569; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    main {
+      flex: 1;
+      padding: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* Stats & Control Bar */
+    .dashboard-bar {
+      background-color: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+    }
+    .stat-card {
+      background: #0f172a;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 12px 16px;
+    }
+    .stat-label { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; }
+    .stat-val { font-size: 1.5rem; font-weight: 700; margin-top: 4px; }
+    .stat-val.primary { color: #60a5fa; }
+    .stat-val.success { color: #34d399; }
+    .stat-val.warning { color: #fbbf24; }
+
+    .control-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      border-top: 1px solid #334155;
+      padding-top: 16px;
+    }
+    .control-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* Progress Banner */
+    .progress-box {
+      background: #172554;
+      border: 1px solid #1e40af;
+      border-radius: 8px;
+      padding: 16px;
+      display: none;
+    }
+    .progress-box.active { display: block; }
+    .progress-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-weight: 600; font-size: 0.95rem; }
+    .progress-bar-bg { background: #1e3a8a; height: 12px; border-radius: 6px; overflow: hidden; position: relative; }
+    .progress-bar-fill { background: linear-gradient(90deg, #3b82f6, #60a5fa); height: 100%; width: 0%; transition: width 0.3s ease; }
+
+    /* Columns Layout */
+    .grid-columns {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    @media (max-width: 1024px) {
+      .grid-columns { grid-template-columns: 1fr; }
+    }
+    .col-panel {
+      background-color: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 480px;
+    }
+    .col-header {
+      padding: 16px;
+      background: #243248;
+      border-bottom: 1px solid var(--card-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .col-title { font-weight: 700; font-size: 1.05rem; }
+    .badge {
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-weight: 700;
+    }
+    .badge-ready { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .badge-error { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+
+    .clip-list {
+      flex: 1;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overflow-y: auto;
+      max-height: 520px;
+    }
+    .clip-card {
+      background: #0f172a;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .clip-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .clip-name {
+      font-weight: 600;
+      font-size: 0.85rem;
+      word-break: break-all;
+    }
+    .clip-meta {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    video {
+      width: 100%;
+      max-height: 160px;
+      border-radius: 6px;
+      background: #000;
+      outline: none;
+    }
+
+    /* Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7);
+      justify-content: center;
+      align-items: center;
+      z-index: 200;
+    }
+    .modal.active { display: flex; }
+    .modal-content {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 24px;
+      width: 100%;
+      max-width: 440px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .modal-title { font-size: 1.2rem; font-weight: 700; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group label { font-size: 0.85rem; color: var(--text-muted); }
+    .form-group input {
+      background: #0f172a;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 10px;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      🎬 <span>Video Combinator</span>
+    </div>
+    <div class="product-select-wrapper">
+      <select id="productSelect" onchange="switchProduct()"></select>
+      <button class="btn btn-secondary" onclick="openNewProductModal()">+ Tambah Produk</button>
+      <button class="btn btn-secondary" onclick="rescanCurrentProduct()" title="Scan Ulang Folder Database">🔄 Rescan</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Stats & Controller -->
+    <div class="dashboard-bar">
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-label">Total Kombinasi</div>
+          <div class="stat-val primary" id="statTotal">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Selesai (Sudah Ada)</div>
+          <div class="stat-val success" id="statDone">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Siap Digenerate (Baru)</div>
+          <div class="stat-val warning" id="statQueued">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Estimasi Waktu</div>
+          <div class="stat-val" id="statEta">0s</div>
+        </div>
+      </div>
+
+      <div class="progress-box" id="progressBox">
+        <div class="progress-header">
+          <span id="progressText">Memproses: -</span>
+          <span id="progressPercent">0%</span>
+        </div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="progressBarFill"></div>
+        </div>
+      </div>
+
+      <div class="control-row">
+        <div class="control-actions">
+          <label style="font-size: 0.85rem; color: var(--text-muted);">Scope: </label>
+          <select id="scopeSelect" onchange="loadPlan()">
+            <option value="new" selected>Aset Baru Saja (Incremental)</option>
+            <option value="all">Semua Kombinasi</option>
+            <option value="stale">Kombinasi Stale Saja</option>
+          </select>
+        </div>
+        <div class="control-actions">
+          <button class="btn btn-secondary" onclick="openOutputDir()">📂 Buka Folder Hasil</button>
+          <button class="btn btn-secondary" onclick="downloadCsv()">📥 Unduh CSV Iklan</button>
+          <button class="btn btn-primary" id="btnGenerate" onclick="startRender()">🚀 Mulai Generate Video</button>
+          <button class="btn btn-danger" id="btnCancel" onclick="cancelRender()" style="display: none;">⏹ Batal / Stop</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3-Column Asset Matrix -->
+    <div class="grid-columns">
+      <!-- Hooks Column -->
+      <div class="col-panel">
+        <div class="col-header">
+          <span class="col-title">1. Hooks (Video Awal)</span>
+          <span class="badge badge-ready" id="badgeHooks">0 File</span>
+        </div>
+        <div class="clip-list" id="listHooks"></div>
+      </div>
+
+      <!-- Bodies Column -->
+      <div class="col-panel">
+        <div class="col-header">
+          <span class="col-title">2. Bodies (Isi / Produk)</span>
+          <span class="badge badge-ready" id="badgeBodies">0 File</span>
+        </div>
+        <div class="clip-list" id="listBodies"></div>
+      </div>
+
+      <!-- CTAs Column -->
+      <div class="col-panel">
+        <div class="col-header">
+          <span class="col-title">3. CTAs (Ajakan Beli)</span>
+          <span class="badge badge-ready" id="badgeCtas">0 File</span>
+        </div>
+        <div class="clip-list" id="listCtas"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Modal Buat Produk -->
+  <div class="modal" id="modalProduct">
+    <div class="modal-content">
+      <div class="modal-title">Tambah Produk Baru</div>
+      <div class="form-group">
+        <label>Nama Display Produk</label>
+        <input type="text" id="newProductName" placeholder="misal: Sepatu Ari Original">
+      </div>
+      <div class="form-group">
+        <label>Slug Identifier (otomatis)</label>
+        <input type="text" id="newProductSlug" placeholder="misal: sepatu-ari">
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
+        <button class="btn btn-secondary" onclick="closeNewProductModal()">Batal</button>
+        <button class="btn btn-primary" onclick="submitNewProduct()">Buat Produk</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentSlug = "";
+    let sseSource = null;
+
+    async function api(path, opts = {}) {
+      const headers = { "X-App-Request": "1", ...(opts.headers || {}) };
+      if (opts.body && typeof opts.body === "object") {
+        headers["Content-Type"] = "application/json";
+        opts.body = JSON.stringify(opts.body);
+      }
+      const res = await fetch(path, { ...opts, headers });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error?.message || `HTTP ${res.status}`);
+      }
+      if (res.status === 204) return null;
+      return res.json();
+    }
+
+    async function init() {
+      await loadProductList();
+    }
+
+    async function loadProductList() {
+      const { products } = await api("/api/products");
+      const sel = document.getElementById("productSelect");
+      sel.innerHTML = "";
+      if (products.length === 0) {
+        // Otomatis buat produk default
+        await api("/api/products", {
+          method: "POST",
+          body: { slug: "produk-utama", displayName: "Produk Utama" }
+        });
+        return loadProductList();
+      }
+
+      for (const p of products) {
+        const opt = document.createElement("option");
+        opt.value = p.slug;
+        opt.textContent = `${p.displayName} (${p.slug})`;
+        sel.appendChild(opt);
+      }
+
+      currentSlug = products[0].slug;
+      sel.value = currentSlug;
+      await loadProductDetails();
+    }
+
+    async function switchProduct() {
+      currentSlug = document.getElementById("productSelect").value;
+      await loadProductDetails();
+    }
+
+    async function loadProductDetails() {
+      connectSSE();
+      const { registry } = await api(`/api/products/${currentSlug}`);
+      renderClips("listHooks", "badgeHooks", registry.assets.hook, "hook");
+      renderClips("listBodies", "badgeBodies", registry.assets.body, "body");
+      renderClips("listCtas", "badgeCtas", registry.assets.cta, "cta");
+      await loadPlan();
+    }
+
+    function renderClips(containerId, badgeId, assetsMap, kind) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = "";
+      const items = Object.entries(assetsMap || {});
+      document.getElementById(badgeId).textContent = `${items.length} File`;
+
+      if (items.length === 0) {
+        container.innerHTML = `<div style="color: #64748b; font-size: 0.85rem; text-align: center; margin-top: 40px;">Belum ada video di folder database/${currentSlug}/${kind}s/</div>`;
+        return;
+      }
+
+      for (const [file, item] of items) {
+        const card = document.createElement("div");
+        card.className = "clip-card";
+        card.innerHTML = `
+          <div class="clip-header">
+            <div>
+              <div class="clip-name">${file}</div>
+              <div class="clip-meta">${item.durationSeconds.toFixed(1)}s · ${(item.sizeBytes / 1024 / 1024).toFixed(1)} MB</div>
+            </div>
+            <span class="badge ${item.status === 'READY' ? 'badge-ready' : 'badge-error'}">${item.status}</span>
+          </div>
+          <video controls preload="none">
+            <source src="/api/products/${currentSlug}/media/${kind}/${encodeURIComponent(file)}" type="video/mp4">
+          </video>
+        `;
+        container.appendChild(card);
+      }
+    }
+
+    async function loadPlan() {
+      const scope = document.getElementById("scopeSelect").value;
+      const { plan } = await api(`/api/products/${currentSlug}/plan?scope=${scope}`);
+
+      document.getElementById("statTotal").textContent = plan.counts.total;
+      document.getElementById("statDone").textContent = plan.counts.done;
+      document.getElementById("statQueued").textContent = plan.counts.queued;
+      document.getElementById("statEta").textContent = `${plan.estimate.etaSeconds}s`;
+
+      const btnGen = document.getElementById("btnGenerate");
+      if (plan.counts.queued === 0) {
+        btnGen.disabled = true;
+        btnGen.textContent = "Semua Video Sudah Selesai";
+      } else {
+        btnGen.disabled = false;
+        btnGen.textContent = `🚀 Generate ${plan.counts.queued} Video Baru`;
+      }
+    }
+
+    async function rescanCurrentProduct() {
+      await api(`/api/products/${currentSlug}/scan`, { method: "POST" });
+      await loadProductDetails();
+    }
+
+    async function startRender() {
+      const scope = document.getElementById("scopeSelect").value;
+      document.getElementById("btnGenerate").disabled = true;
+      document.getElementById("btnCancel").style.display = "inline-flex";
+      document.getElementById("progressBox").classList.add("active");
+
+      await api(`/api/products/${currentSlug}/render`, {
+        method: "POST",
+        body: { scope }
+      });
+    }
+
+    async function cancelRender() {
+      await api(`/api/products/${currentSlug}/render/cancel`, { method: "POST" });
+    }
+
+    function connectSSE() {
+      if (sseSource) sseSource.close();
+      sseSource = new EventSource(`/api/products/${currentSlug}/events`);
+
+      sseSource.addEventListener("progress", (e) => {
+        const data = JSON.parse(e.data);
+        const pct = Math.round((data.done / data.total) * 100);
+        document.getElementById("progressText").textContent = `Memproses: ${data.current} (${data.done}/${data.total})`;
+        document.getElementById("progressPercent").textContent = `${pct}%`;
+        document.getElementById("progressBarFill").style.width = `${pct}%`;
+      });
+
+      sseSource.addEventListener("done", () => {
+        document.getElementById("btnCancel").style.display = "none";
+        document.getElementById("progressText").textContent = "Semua render selesai!";
+        document.getElementById("progressBarFill").style.width = "100%";
+        loadPlan();
+      });
+
+      sseSource.addEventListener("cancelled", () => {
+        document.getElementById("btnCancel").style.display = "none";
+        document.getElementById("progressText").textContent = "Render dibatalkan.";
+        loadPlan();
+      });
+    }
+
+    function openOutputDir() {
+      api(`/api/products/${currentSlug}/open-output`, { method: "POST" });
+    }
+
+    function downloadCsv() {
+      window.location.href = `/api/products/${currentSlug}/report.csv`;
+    }
+
+    function openNewProductModal() {
+      document.getElementById("modalProduct").classList.add("active");
+    }
+    function closeNewProductModal() {
+      document.getElementById("modalProduct").classList.remove("active");
+    }
+
+    document.getElementById("newProductName").addEventListener("input", (e) => {
+      const slug = e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      document.getElementById("newProductSlug").value = slug;
+    });
+
+    async function submitNewProduct() {
+      const displayName = document.getElementById("newProductName").value.trim();
+      const slug = document.getElementById("newProductSlug").value.trim();
+      if (!displayName || !slug) return alert("Mohon lengkapi nama produk");
+
+      await api("/api/products", {
+        method: "POST",
+        body: { slug, displayName }
+      });
+      closeNewProductModal();
+      await loadProductList();
+    }
+
+    window.addEventListener("DOMContentLoaded", init);
+  </script>
+</body>
+</html>

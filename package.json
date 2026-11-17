@@ -1,0 +1,34 @@
+{
+  "name": "video-combinator",
+  "version": "1.0.0",
+  "description": "Automated Multi-Product Video Combinator (Fast Concat Copy Pipeline)",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "fixtures": "tsx scripts/make-fixtures.ts",
+    "benchmark": "tsx scripts/benchmark.ts",
+    "cli": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "express": "^5.0.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.7"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}

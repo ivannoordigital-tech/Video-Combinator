@@ -1,0 +1,9 @@
+{
+  "forbidden": [
+    "CON.mp4",
+    "PRN.mp4",
+    "AUX.mp4",
+    "NUL.mp4",
+    "COM1.mp4"
+  ]
+}

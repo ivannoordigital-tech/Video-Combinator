@@ -1,0 +1,19 @@
+{
+  "bom": "EF BB BF",
+  "delimiter": ",",
+  "crlf": true,
+  "columns": [
+    "filename",
+    "product",
+    "hook",
+    "body",
+    "cta",
+    "duration_seconds",
+    "created_at",
+    "status",
+    "size_mb",
+    "width",
+    "height",
+    "fps"
+  ]
+}

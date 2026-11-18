@@ -3,383 +3,1028 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Video Combinator — Dashboard</title>
+  <title>Video Combinator: Studio Dashboard</title>
   <style>
     :root {
-      --bg: #0f172a;
-      --card-bg: #1e293b;
-      --card-border: #334155;
-      --primary: #3b82f6;
-      --primary-hover: #2563eb;
+      --bg: #0e0f12;
+      --surface: #16171c;
+      --surface-hover: #1e2026;
+      --surface-muted: #121317;
+      --border: #282931;
+      --border-focus: #f59e0b;
+      --primary: #f59e0b;
+      --primary-hover: #d97706;
+      --primary-active: #b45309;
+      --primary-contrast: #000000;
       --success: #10b981;
+      --success-surface: rgba(16, 185, 129, 0.12);
       --warning: #f59e0b;
+      --warning-surface: rgba(245, 158, 11, 0.12);
       --danger: #ef4444;
-      --text: #f8fafc;
-      --text-muted: #94a3b8;
+      --danger-hover: #dc2626;
+      --danger-surface: rgba(239, 68, 68, 0.12);
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --text-subtle: #6b7280;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
     body {
       background-color: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
     }
+
+    /* Interactive Affordances (R-39) */
+    a, button, select, input, label[for] {
+      cursor: pointer;
+    }
+    button:disabled, select:disabled, input:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    /* Keyboard Focus Indicator (R-32) */
+    :focus-visible {
+      outline: 2px solid var(--border-focus);
+      outline-offset: 2px;
+    }
+
+    /* Motion Accessibility (R-39) */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* Tabular figures for telemetry */
+    .tabular-num {
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Header */
     header {
-      background-color: var(--card-bg);
-      border-bottom: 1px solid var(--card-border);
-      padding: 16px 24px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      background-color: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
       position: sticky;
       top: 0;
-      z-index: 100;
+      z-index: 50;
     }
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: #fff;
-    }
-    .brand span {
-      background: linear-gradient(135deg, #60a5fa, #a855f7);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    .product-select-wrapper {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    select, input, button {
-      font-family: inherit;
-      font-size: 0.9rem;
-    }
-    select {
-      background-color: #0f172a;
-      color: #fff;
-      border: 1px solid var(--card-border);
-      border-radius: 8px;
-      padding: 8px 14px;
-      outline: none;
-      cursor: pointer;
-    }
-    .btn {
-      padding: 8px 16px;
-      border-radius: 8px;
-      font-weight: 600;
-      border: none;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .btn-primary { background-color: var(--primary); color: #fff; }
-    .btn-primary:hover { background-color: var(--primary-hover); }
-    .btn-success { background-color: var(--success); color: #fff; }
-    .btn-danger { background-color: var(--danger); color: #fff; }
-    .btn-secondary { background-color: #334155; color: #fff; }
-    .btn-secondary:hover { background-color: #475569; }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    main {
-      flex: 1;
-      padding: 24px;
-      max-width: 1400px;
+    .header-inner {
+      max-width: 1440px;
       margin: 0 auto;
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-    }
-
-    /* Stats & Control Bar */
-    .dashboard-bar {
-      background-color: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 12px;
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    .stats-row {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 16px;
-    }
-    .stat-card {
-      background: #0f172a;
-      border: 1px solid var(--card-border);
-      border-radius: 8px;
-      padding: 12px 16px;
-    }
-    .stat-label { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; }
-    .stat-val { font-size: 1.5rem; font-weight: 700; margin-top: 4px; }
-    .stat-val.primary { color: #60a5fa; }
-    .stat-val.success { color: #34d399; }
-    .stat-val.warning { color: #fbbf24; }
-
-    .control-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
       gap: 16px;
-      border-top: 1px solid #334155;
-      padding-top: 16px;
     }
-    .control-actions {
+    .brand {
       display: flex;
       align-items: center;
       gap: 12px;
     }
+    .brand-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--surface-muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--primary);
+    }
+    .brand-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+    .brand-badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: var(--surface-hover);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      margin-left: 4px;
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .product-select-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .control-label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    /* Form Controls */
+    select, input[type="text"] {
+      background-color: var(--surface-muted);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 0.9rem;
+      min-height: 40px;
+    }
+    select:hover, input[type="text"]:hover {
+      border-color: #3f414d;
+    }
+    select:focus, input[type="text"]:focus {
+      border-color: var(--border-focus);
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px 14px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+      min-height: 40px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .btn svg {
+      flex-shrink: 0;
+    }
+    .btn-primary {
+      background-color: var(--primary);
+      color: var(--primary-contrast);
+      border-color: var(--primary);
+    }
+    .btn-primary:hover:not(:disabled) {
+      background-color: var(--primary-hover);
+      border-color: var(--primary-hover);
+    }
+    .btn-primary:active:not(:disabled) {
+      background-color: var(--primary-active);
+    }
+    .btn-secondary {
+      background-color: var(--surface-muted);
+      color: var(--text);
+      border-color: var(--border);
+    }
+    .btn-secondary:hover:not(:disabled) {
+      background-color: var(--surface-hover);
+      border-color: #434450;
+    }
+    .btn-danger {
+      background-color: var(--danger-surface);
+      color: #fca5a5;
+      border-color: rgba(239, 68, 68, 0.4);
+    }
+    .btn-danger:hover:not(:disabled) {
+      background-color: var(--danger);
+      color: #ffffff;
+      border-color: var(--danger);
+    }
+    .btn-sm {
+      min-height: 32px;
+      padding: 4px 10px;
+      font-size: 0.8rem;
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      padding: 24px;
+      max-width: 1440px;
+      margin: 0 auto;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* Telemetry & Control Panel */
+    .telemetry-panel {
+      background-color: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+    }
+    .metric-card {
+      background-color: var(--surface-muted);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .metric-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .metric-value {
+      font-size: 1.65rem;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.2;
+    }
+    .metric-value.accent { color: var(--primary); }
+    .metric-value.success { color: var(--success); }
+    .metric-value.warning { color: var(--warning); }
+    .metric-value.danger { color: var(--danger); }
+    .metric-value.compact {
+      font-size: 1.15rem;
+      font-weight: 600;
+      line-height: 1.35;
+      padding-top: 4px;
+    }
 
     /* Progress Banner */
-    .progress-box {
-      background: #172554;
-      border: 1px solid #1e40af;
+    .progress-banner {
+      background-color: var(--surface-muted);
+      border: 1px solid var(--border);
       border-radius: 8px;
       padding: 16px;
       display: none;
+      flex-direction: column;
+      gap: 10px;
     }
-    .progress-box.active { display: block; }
-    .progress-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-weight: 600; font-size: 0.95rem; }
-    .progress-bar-bg { background: #1e3a8a; height: 12px; border-radius: 6px; overflow: hidden; position: relative; }
-    .progress-bar-fill { background: linear-gradient(90deg, #3b82f6, #60a5fa); height: 100%; width: 0%; transition: width 0.3s ease; }
+    .progress-banner.active {
+      display: flex;
+    }
+    .progress-banner-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.88rem;
+    }
+    .progress-status-text {
+      color: var(--text);
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .progress-track {
+      background-color: #21222a;
+      height: 10px;
+      border-radius: 5px;
+      overflow: hidden;
+      width: 100%;
+    }
+    .progress-fill {
+      background-color: var(--primary);
+      height: 100%;
+      width: 0%;
+      transition: width 0.2s linear;
+    }
+    .progress-banner.has-failures .progress-fill {
+      background-color: var(--warning);
+    }
 
-    /* Columns Layout */
-    .grid-columns {
+    /* Plan, Connection & Error Status */
+    .status-line {
+      font-size: 0.83rem;
+      color: var(--text-muted);
+      background-color: var(--surface-muted);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--primary);
+      border-radius: 6px;
+      padding: 8px 12px;
+      line-height: 1.4;
+    }
+    .status-line-error {
+      border-left-color: var(--danger);
+      color: #fca5a5;
+    }
+    .status-line-warning {
+      border-left-color: var(--warning);
+      color: #fcd34d;
+    }
+
+    .plan-banner {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .plan-banner[hidden] {
+      display: none;
+    }
+    .plan-banner-error {
+      background-color: var(--danger-surface);
+      border-color: rgba(239, 68, 68, 0.4);
+    }
+    .plan-banner-warning {
+      background-color: var(--warning-surface);
+      border-color: rgba(245, 158, 11, 0.4);
+    }
+    .plan-banner-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+    .plan-banner-error .plan-banner-title { color: #fca5a5; }
+    .plan-banner-warning .plan-banner-title { color: #fcd34d; }
+    .plan-banner ul {
+      margin: 0;
+      padding-left: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.83rem;
+      color: var(--text);
+    }
+
+    .render-errors {
+      background-color: var(--danger-surface);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      border-radius: 8px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .render-errors[hidden] {
+      display: none;
+    }
+    .render-errors-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #fca5a5;
+    }
+    .render-errors ul {
+      margin: 0;
+      padding-left: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.8rem;
+      color: var(--text);
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    .render-errors li {
+      word-break: break-word;
+    }
+
+    /* Action Strip */
+    .action-strip {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 14px;
+      border-top: 1px solid var(--border);
+      padding-top: 16px;
+    }
+    .action-group-left, .action-group-right {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .generate-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+    }
+    .action-hint {
+      font-size: 0.76rem;
+      line-height: 1.35;
+      color: var(--text-muted);
+      max-width: 280px;
+    }
+    .action-hint:empty {
+      display: none;
+    }
+
+    /* 3-Column Video Matrix */
+    .pipeline-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 20px;
     }
-    @media (max-width: 1024px) {
-      .grid-columns { grid-template-columns: 1fr; }
+    @media (max-width: 1080px) {
+      .pipeline-grid {
+        grid-template-columns: 1fr;
+      }
     }
-    .col-panel {
-      background-color: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 12px;
+    .stage-column {
+      background-color: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
       display: flex;
       flex-direction: column;
+      min-height: 520px;
       overflow: hidden;
-      min-height: 480px;
     }
-    .col-header {
-      padding: 16px;
-      background: #243248;
-      border-bottom: 1px solid var(--card-border);
+    .stage-header {
+      padding: 14px 16px;
+      background-color: var(--surface-muted);
+      border-bottom: 1px solid var(--border);
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
-    .col-title { font-weight: 700; font-size: 1.05rem; }
-    .badge {
-      font-size: 0.75rem;
-      padding: 3px 8px;
-      border-radius: 12px;
-      font-weight: 700;
+    .stage-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
-    .badge-ready { background: rgba(16, 185, 129, 0.2); color: #34d399; }
-    .badge-error { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+    .stage-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--text);
+    }
+    .stage-badge {
+      font-size: 0.74rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
 
-    .clip-list {
+    .clip-scroll-area {
       flex: 1;
-      padding: 16px;
+      padding: 14px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 14px;
       overflow-y: auto;
-      max-height: 520px;
+      max-height: 640px;
     }
+
+    /* Empty State in Stage Column */
+    .stage-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px 20px;
+      height: 100%;
+      color: var(--text-muted);
+      gap: 12px;
+    }
+    .stage-empty-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 8px;
+      background: var(--surface-muted);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-subtle);
+    }
+    .stage-empty-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .stage-empty-desc {
+      font-size: 0.8rem;
+      color: var(--text-subtle);
+      max-width: 240px;
+      line-height: 1.4;
+    }
+
+    /* Video Card */
     .clip-card {
-      background: #0f172a;
-      border: 1px solid var(--card-border);
+      background-color: var(--surface-muted);
+      border: 1px solid var(--border);
       border-radius: 8px;
       padding: 12px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 10px;
+      transition: border-color 0.15s ease;
     }
-    .clip-header {
+    .clip-card:hover {
+      border-color: #3b3c48;
+    }
+    .clip-card-header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      gap: 8px;
+      gap: 10px;
     }
     .clip-name {
-      font-weight: 600;
       font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
       word-break: break-all;
+      line-height: 1.3;
     }
-    .clip-meta {
-      font-size: 0.75rem;
+    .clip-specs {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+      font-size: 0.74rem;
       color: var(--text-muted);
     }
-    video {
-      width: 100%;
-      max-height: 160px;
-      border-radius: 6px;
-      background: #000;
-      outline: none;
+    .clip-badge-status {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      letter-spacing: 0.02em;
+      flex-shrink: 0;
+    }
+    .badge-ready {
+      background-color: var(--success-surface);
+      color: var(--success);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .badge-normalizing {
+      background-color: var(--warning-surface);
+      color: var(--warning);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .badge-error {
+      background-color: var(--danger-surface);
+      color: var(--danger);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+    .clip-error {
+      font-size: 0.76rem;
+      line-height: 1.4;
+      color: #fca5a5;
+      background-color: var(--danger-surface);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 5px;
+      padding: 6px 8px;
+      word-break: break-word;
     }
 
-    /* Modal */
-    .modal {
-      display: none;
+    /* Video Player (R-40: strict aspect ratio prevents layout shift) */
+    .video-viewport {
+      width: 100%;
+      aspect-ratio: 9 / 16;
+      max-height: 240px;
+      background-color: #000000;
+      border-radius: 6px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .video-viewport video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+
+    /* Modal (R-32, R-39) */
+    .modal-overlay {
       position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.7);
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      display: flex;
       justify-content: center;
       align-items: center;
-      z-index: 200;
+      z-index: 100;
+      padding: 16px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease;
     }
-    .modal.active { display: flex; }
-    .modal-content {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 12px;
+    .modal-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .modal-dialog {
+      background-color: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
       padding: 24px;
       width: 100%;
-      max-width: 440px;
+      max-width: 460px;
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 18px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
     }
-    .modal-title { font-size: 1.2rem; font-weight: 700; }
-    .form-group { display: flex; flex-direction: column; gap: 6px; }
-    .form-group label { font-size: 0.85rem; color: var(--text-muted); }
-    .form-group input {
-      background: #0f172a;
-      border: 1px solid var(--card-border);
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .form-group label {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .form-group .form-hint {
+      font-size: 0.75rem;
+      color: var(--text-subtle);
+    }
+    .form-error-msg {
+      font-size: 0.8rem;
+      color: var(--danger);
+      display: none;
+    }
+    .form-error-msg.visible {
+      display: block;
+    }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 6px;
+    }
+
+    /* Toast Notification (Accessible Feedback) */
+    .toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 150;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    }
+    .toast {
+      background-color: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 10px;
-      color: #fff;
+      padding: 12px 18px;
+      font-size: 0.88rem;
+      color: var(--text);
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      pointer-events: auto;
+      min-width: 280px;
+      max-width: 400px;
+      transition: transform 0.2s ease, opacity 0.2s ease;
+    }
+    .toast-success { border-left: 4px solid var(--success); }
+    .toast-error { border-left: 4px solid var(--danger); }
+    .toast-warning { border-left: 4px solid var(--warning); }
+    .toast-info { border-left: 4px solid var(--primary); }
+    .toast-message {
+      flex: 1;
+      word-break: break-word;
+    }
+    .toast-action {
+      background-color: var(--surface-hover);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .toast-action:hover {
+      border-color: var(--border-focus);
+    }
+
+    /* Spinner */
+    .spin {
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
     }
   </style>
 </head>
 <body>
 
+  <!-- Top Command Header -->
   <header>
-    <div class="brand">
-      🎬 <span>Video Combinator</span>
-    </div>
-    <div class="product-select-wrapper">
-      <select id="productSelect" onchange="switchProduct()"></select>
-      <button class="btn btn-secondary" onclick="openNewProductModal()">+ Tambah Produk</button>
-      <button class="btn btn-secondary" onclick="rescanCurrentProduct()" title="Scan Ulang Folder Database">🔄 Rescan</button>
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+            <line x1="7" y1="2" x2="7" y2="22"></line>
+            <line x1="17" y1="2" x2="17" y2="22"></line>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <line x1="2" y1="7" x2="7" y2="7"></line>
+            <line x1="2" y1="17" x2="7" y2="17"></line>
+            <line x1="17" y1="17" x2="22" y2="17"></line>
+            <line x1="17" y1="7" x2="22" y2="7"></line>
+          </svg>
+        </div>
+        <div class="brand-title">Video Combinator</div>
+        <span class="brand-badge">Studio Lab v2.0</span>
+      </div>
+
+      <div class="header-controls">
+        <div class="product-select-group">
+          <label for="productSelect" class="control-label">Produk Aktif:</label>
+          <select id="productSelect" onchange="switchProduct()" aria-label="Pilih Produk Aktif"></select>
+        </div>
+        <button class="btn btn-secondary" onclick="openNewProductModal()" id="btnOpenModal">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          Produk Baru
+        </button>
+        <button class="btn btn-secondary" onclick="rescanCurrentProduct()" id="btnRescan" title="Pindai ulang dan normalisasi file di folder database">
+          <svg id="iconRescan" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+          Pindai Ulang
+        </button>
+      </div>
     </div>
   </header>
 
   <main>
-    <!-- Stats & Controller -->
-    <div class="dashboard-bar">
-      <div class="stats-row">
-        <div class="stat-card">
-          <div class="stat-label">Total Kombinasi</div>
-          <div class="stat-val primary" id="statTotal">0</div>
+    <!-- Telemetry & Controller Bar -->
+    <section class="telemetry-panel" aria-label="Status Pipeline dan Kontrol">
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <span class="metric-label">Total Kombinasi</span>
+          <span class="metric-value tabular-num" id="statTotal">0</span>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Selesai (Sudah Ada)</div>
-          <div class="stat-val success" id="statDone">0</div>
+        <div class="metric-card">
+          <span class="metric-label">Selesai (Sudah Siap)</span>
+          <span class="metric-value tabular-num success" id="statDone">0</span>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Siap Digenerate (Baru)</div>
-          <div class="stat-val warning" id="statQueued">0</div>
+        <div class="metric-card">
+          <span class="metric-label">Antrean Baru</span>
+          <span class="metric-value tabular-num accent" id="statQueued">0</span>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Estimasi Waktu</div>
-          <div class="stat-val" id="statEta">0s</div>
+        <div class="metric-card">
+          <span class="metric-label">Stale</span>
+          <span class="metric-value tabular-num warning" id="statStale">0</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Orphan</span>
+          <span class="metric-value tabular-num danger" id="statOrphan">0</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Disk (Perlu / Bebas)</span>
+          <span class="metric-value tabular-num compact" id="statDisk">- / -</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Estimasi Render</span>
+          <span class="metric-value tabular-num" id="statEta">0 dtk</span>
         </div>
       </div>
 
-      <div class="progress-box" id="progressBox">
-        <div class="progress-header">
-          <span id="progressText">Memproses: -</span>
-          <span id="progressPercent">0%</span>
+      <!-- Live Render Progress Banner -->
+      <div class="progress-banner" id="progressBox" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-banner-header">
+          <span class="progress-status-text">
+            <svg class="spin" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+            <span id="progressText">Memulai proses penggabungan video...</span>
+          </span>
+          <span class="tabular-num" id="progressPercent" style="font-weight: 700; color: var(--primary);">0%</span>
         </div>
-        <div class="progress-bar-bg">
-          <div class="progress-bar-fill" id="progressBarFill"></div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progressBarFill"></div>
         </div>
       </div>
 
-      <div class="control-row">
-        <div class="control-actions">
-          <label style="font-size: 0.85rem; color: var(--text-muted);">Scope: </label>
+      <div class="status-line" id="planStatus" role="status" hidden></div>
+      <div class="status-line" id="sseStatus" role="status" hidden>Menyambung ulang...</div>
+
+      <div class="plan-banner plan-banner-error" id="planBlockers" role="alert" hidden>
+        <div class="plan-banner-title">Render diblokir</div>
+        <ul id="planBlockersList"></ul>
+      </div>
+
+      <div class="plan-banner plan-banner-warning" id="planWarnings" role="status" hidden>
+        <div class="plan-banner-title">Peringatan rencana</div>
+        <ul id="planWarningsList"></ul>
+      </div>
+
+      <div class="render-errors" id="renderErrors" role="status" hidden>
+        <div class="render-errors-title" id="renderErrorsTitle">Kegagalan terakhir</div>
+        <ul id="renderErrorsList"></ul>
+      </div>
+
+      <!-- Action Strip -->
+      <div class="action-strip">
+        <div class="action-group-left">
+          <label for="scopeSelect" class="control-label">Cakupan Render:</label>
           <select id="scopeSelect" onchange="loadPlan()">
-            <option value="new" selected>Aset Baru Saja (Incremental)</option>
-            <option value="all">Semua Kombinasi</option>
-            <option value="stale">Kombinasi Stale Saja</option>
+            <option value="new" selected>Variasi Baru Saja (Incremental)</option>
+            <option value="all">Semua Kombinasi Ulang (Force All)</option>
+            <option value="stale">Kombinasi Kadaluarsa (Stale Saja)</option>
           </select>
         </div>
-        <div class="control-actions">
-          <button class="btn btn-secondary" onclick="openOutputDir()">📂 Buka Folder Hasil</button>
-          <button class="btn btn-secondary" onclick="downloadCsv()">📥 Unduh CSV Iklan</button>
-          <button class="btn btn-primary" id="btnGenerate" onclick="startRender()">🚀 Mulai Generate Video</button>
-          <button class="btn btn-danger" id="btnCancel" onclick="cancelRender()" style="display: none;">⏹ Batal / Stop</button>
-        </div>
-      </div>
-    </div>
 
-    <!-- 3-Column Asset Matrix -->
-    <div class="grid-columns">
-      <!-- Hooks Column -->
-      <div class="col-panel">
-        <div class="col-header">
-          <span class="col-title">1. Hooks (Video Awal)</span>
-          <span class="badge badge-ready" id="badgeHooks">0 File</span>
+        <div class="action-group-right">
+          <button class="btn btn-secondary" onclick="openDatabaseDir('', this)" id="btnOpenDatabase" title="Buka folder database produk ini di Windows Explorer">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            Folder Mentahan
+          </button>
+          <button class="btn btn-secondary" onclick="openOutputDir(this)" id="btnOpenOutput" title="Buka folder output hasil gabungan">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            Folder Hasil
+          </button>
+          <button class="btn btn-secondary" onclick="downloadCsv()" title="Unduh laporan ringkasan iklan format CSV untuk Ads Manager">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Laporan CSV
+          </button>
+          <div class="generate-wrap">
+            <button class="btn btn-primary" id="btnGenerate" onclick="startRender()" aria-describedby="generateHint" disabled>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              Generate Video Baru
+            </button>
+            <p class="action-hint" id="generateHint" aria-live="polite">Menghitung rencana render...</p>
+          </div>
+          <button class="btn btn-danger" id="btnCancel" onclick="cancelRender()" style="display: none;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
+            Hentikan Render
+          </button>
         </div>
-        <div class="clip-list" id="listHooks"></div>
       </div>
+    </section>
 
-      <!-- Bodies Column -->
-      <div class="col-panel">
-        <div class="col-header">
-          <span class="col-title">2. Bodies (Isi / Produk)</span>
-          <span class="badge badge-ready" id="badgeBodies">0 File</span>
+    <!-- 3-Stage Pipeline Grid -->
+    <div class="pipeline-grid">
+      <!-- 1. Hooks Stage -->
+      <section class="stage-column" aria-labelledby="stageHooksTitle">
+        <div class="stage-header">
+          <div class="stage-title-wrap">
+            <span class="stage-title" id="stageHooksTitle">1. Hooks (Video Pembuka)</span>
+            <span class="stage-badge tabular-num" id="badgeHooks">0 File</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="openDatabaseDir('hooks', this)" id="btnOpenHooks" title="Buka folder hooks di File Explorer">Buka Folder</button>
         </div>
-        <div class="clip-list" id="listBodies"></div>
-      </div>
+        <div class="clip-scroll-area" id="listHooks"></div>
+      </section>
 
-      <!-- CTAs Column -->
-      <div class="col-panel">
-        <div class="col-header">
-          <span class="col-title">3. CTAs (Ajakan Beli)</span>
-          <span class="badge badge-ready" id="badgeCtas">0 File</span>
+      <!-- 2. Bodies Stage -->
+      <section class="stage-column" aria-labelledby="stageBodiesTitle">
+        <div class="stage-header">
+          <div class="stage-title-wrap">
+            <span class="stage-title" id="stageBodiesTitle">2. Bodies (Isi dan Review)</span>
+            <span class="stage-badge tabular-num" id="badgeBodies">0 File</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="openDatabaseDir('bodies', this)" id="btnOpenBodies" title="Buka folder bodies di File Explorer">Buka Folder</button>
         </div>
-        <div class="clip-list" id="listCtas"></div>
-      </div>
+        <div class="clip-scroll-area" id="listBodies"></div>
+      </section>
+
+      <!-- 3. CTAs Stage -->
+      <section class="stage-column" aria-labelledby="stageCtasTitle">
+        <div class="stage-header">
+          <div class="stage-title-wrap">
+            <span class="stage-title" id="stageCtasTitle">3. CTAs (Ajakan Bertindak)</span>
+            <span class="stage-badge tabular-num" id="badgeCtas">0 File</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="openDatabaseDir('ctas', this)" id="btnOpenCtas" title="Buka folder ctas di File Explorer">Buka Folder</button>
+        </div>
+        <div class="clip-scroll-area" id="listCtas"></div>
+      </section>
     </div>
   </main>
 
-  <!-- Modal Buat Produk -->
-  <div class="modal" id="modalProduct">
-    <div class="modal-content">
-      <div class="modal-title">Tambah Produk Baru</div>
-      <div class="form-group">
-        <label>Nama Display Produk</label>
-        <input type="text" id="newProductName" placeholder="misal: Sepatu Ari Original">
+  <!-- Modal Tambah Produk (Accessible Dialog) -->
+  <div class="modal-overlay" id="modalProduct" role="dialog" aria-modal="true" aria-labelledby="modalProductTitle">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modalProductTitle">Tambah Produk Baru</h2>
+        <button class="btn btn-secondary btn-sm" onclick="closeNewProductModal()" aria-label="Tutup dialog modal">✕</button>
       </div>
+
       <div class="form-group">
-        <label>Slug Identifier (otomatis)</label>
-        <input type="text" id="newProductSlug" placeholder="misal: sepatu-ari">
+        <label for="newProductName">Nama Produk Display</label>
+        <input type="text" id="newProductName" placeholder="misal: Sepatu Olahraga Pro" autocomplete="off">
+        <span class="form-hint">Nama yang tampil pada antarmuka dashboard.</span>
       </div>
-      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
+
+      <div class="form-group">
+        <label for="newProductSlug">Slug Folder (Pengenal Unik)</label>
+        <input type="text" id="newProductSlug" placeholder="misal: sepatu-olahraga-pro" autocomplete="off">
+        <span class="form-hint">Nama folder di dalam database/ dan output/ (huruf kecil dan strip).</span>
+      </div>
+
+      <div class="form-error-msg" id="modalError">Mohon lengkapi nama produk dan slug folder terlebih dahulu.</div>
+
+      <div class="modal-actions">
         <button class="btn btn-secondary" onclick="closeNewProductModal()">Batal</button>
-        <button class="btn btn-primary" onclick="submitNewProduct()">Buat Produk</button>
+        <button class="btn btn-primary" onclick="submitNewProduct()">Buat Folder Produk</button>
       </div>
     </div>
   </div>
 
+  <!-- Toast Feedbacks -->
+  <div class="toast-container" id="toastContainer" role="status" aria-live="polite"></div>
+
   <script>
     let currentSlug = "";
     let sseSource = null;
+    let lastActiveElement = null;
+
+    // Status render yang sedang berjalan (sumber kebenaran untuk tombol & progress)
+    let renderActive = false;
+    let planRunning = false;
+    let planPending = false;
+    let planRetryTimer = null;
+    let planRetryCount = 0;
+    let cancelHandled = false;
+    let lastPlan = null;
+    let jobState = {
+      jobId: null,
+      status: "IDLE",
+      total: 0,
+      done: 0,
+      failed: 0,
+      current: null,
+    };
+    let lastErrors = [];
+    const recentErrorToasts = new Map();
+    const MAX_RENDER_ERRORS = 20;
+    const ERROR_TOAST_DEDUPE_MS = 10000;
+
+    // Toast Notification Utility
+    function showToast(message, type = "info", opts = {}) {
+      const container = document.getElementById("toastContainer");
+      const toast = document.createElement("div");
+      toast.className = `toast toast-${type}`;
+
+      const text = document.createElement("span");
+      text.className = "toast-message";
+      text.textContent = message;
+      toast.appendChild(text);
+
+      if (opts.action && typeof opts.action.onClick === "function") {
+        const actionBtn = document.createElement("button");
+        actionBtn.type = "button";
+        actionBtn.className = "toast-action";
+        actionBtn.textContent = opts.action.label;
+        actionBtn.addEventListener("click", () => {
+          try {
+            opts.action.onClick(actionBtn);
+          } catch (err) {
+            showToast("Gagal menyalin path.", "error");
+          }
+        });
+        toast.appendChild(actionBtn);
+      }
+
+      container.appendChild(toast);
+
+      const duration = opts.duration || (opts.action ? 10000 : 4000);
+      setTimeout(() => {
+        toast.style.opacity = "0";
+        toast.style.transform = "translateY(8px)";
+        setTimeout(() => toast.remove(), 250);
+      }, duration);
+    }
 
     async function api(path, opts = {}) {
       const headers = { "X-App-Request": "1", ...(opts.headers || {}) };
@@ -390,53 +1035,279 @@
       const res = await fetch(path, { ...opts, headers });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error?.message || `HTTP ${res.status}`);
+        const err = new Error(data.error?.message || `HTTP ${res.status}`);
+        err.status = res.status;
+        err.code = data.error?.code || null;
+        throw err;
       }
       if (res.status === 204) return null;
       return res.json();
     }
 
+    function formatMb(mb) {
+      const value = Number(mb);
+      if (!Number.isFinite(value) || value < 0) return "-";
+      if (value >= 1024) return `${(value / 1024).toFixed(1)} GB`;
+      return `${Math.round(value)} MB`;
+    }
+
+    function processedCount() {
+      return (Number(jobState.done) || 0) + (Number(jobState.failed) || 0);
+    }
+
+    function progressPercent() {
+      const total = Number(jobState.total) || 0;
+      if (total <= 0) return 0;
+      return Math.max(0, Math.min(100, Math.round((processedCount() / total) * 100)));
+    }
+
+    function setProgressDisplay(pct, text) {
+      const box = document.getElementById("progressBox");
+      const safePct = Math.max(0, Math.min(100, Number(pct) || 0));
+      if (typeof text === "string") {
+        document.getElementById("progressText").textContent = text;
+      }
+      document.getElementById("progressPercent").textContent = `${safePct}%`;
+      document.getElementById("progressBarFill").style.width = `${safePct}%`;
+      box.setAttribute("aria-valuenow", String(safePct));
+      box.setAttribute("aria-valuetext", `${safePct} persen`);
+    }
+
+    function showProgress() {
+      document.getElementById("progressBox").classList.add("active");
+    }
+
+    function hideProgress() {
+      document.getElementById("progressBox").classList.remove("active");
+      document.getElementById("progressBox").classList.remove("has-failures");
+    }
+
+    function showCancel() {
+      const btn = document.getElementById("btnCancel");
+      btn.disabled = false;
+      btn.style.display = "inline-flex";
+    }
+
+    function hideCancel() {
+      const btn = document.getElementById("btnCancel");
+      btn.disabled = false;
+      btn.style.display = "none";
+    }
+
+    function disableGenerate(reason, label) {
+      const btn = document.getElementById("btnGenerate");
+      btn.disabled = true;
+      btn.title = reason || "";
+      btn.setAttribute("aria-describedby", "generateHint");
+      document.getElementById("generateHint").textContent = reason || "";
+      if (label) {
+        btn.innerHTML = `
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          ${escapeHtml(label)}
+        `;
+      }
+    }
+
+    function enableGenerate(label) {
+      const btn = document.getElementById("btnGenerate");
+      btn.disabled = false;
+      btn.title = "";
+      btn.setAttribute("aria-describedby", "generateHint");
+      document.getElementById("generateHint").textContent = "";
+      btn.innerHTML = `
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        ${escapeHtml(label)}
+      `;
+    }
+
+    function setPlanStatus(text, tone) {
+      const el = document.getElementById("planStatus");
+      el.classList.toggle("status-line-error", tone === "error");
+      el.classList.toggle("status-line-warning", tone === "warning");
+      if (!text) {
+        el.hidden = true;
+        el.textContent = "";
+        return;
+      }
+      el.hidden = false;
+      el.textContent = text;
+    }
+
+    function hydrateJob(job) {
+      if (!job) return;
+      const total = Number(job.total);
+      const done = Number(job.done);
+      const failed = Number(job.failed);
+      jobState = {
+        jobId: job.jobId || jobState.jobId,
+        status: job.status || jobState.status,
+        total: Number.isFinite(total) ? total : jobState.total,
+        done: Number.isFinite(done) ? done : jobState.done,
+        failed: Number.isFinite(failed) ? failed : jobState.failed,
+        current: job.current ?? jobState.current,
+      };
+    }
+
+    function resetJobState() {
+      jobState = {
+        jobId: null,
+        status: "IDLE",
+        total: 0,
+        done: 0,
+        failed: 0,
+        current: null,
+      };
+    }
+
+    function resetRenderState(opts = {}) {
+      renderActive = false;
+      resetJobState();
+      hideCancel();
+      hideProgress();
+      if (opts.clearErrors) clearRenderErrors();
+    }
+
+    function resetPlanState() {
+      planRunning = false;
+      planPending = false;
+      planRetryCount = 0;
+      lastPlan = null;
+      if (planRetryTimer) {
+        clearTimeout(planRetryTimer);
+        planRetryTimer = null;
+      }
+      setPlanStatus("");
+      setPlanBanner("planBlockers", "planBlockersList", []);
+      setPlanBanner("planWarnings", "planWarningsList", []);
+    }
+
+    function runningJobText() {
+      const total = Number(jobState.total) || 0;
+      const processed = processedCount();
+      if (jobState.current) {
+        return `Memproses: ${jobState.current} (${processed}/${total})`;
+      }
+      return `Memproses ${processed}/${total} video...`;
+    }
+
+    function applyRunningJobUI(text) {
+      renderActive = true;
+      showProgress();
+      showCancel();
+      disableGenerate("Render sedang berjalan. Tunggu sampai selesai atau hentikan render.", "Render Sedang Berjalan");
+      document.getElementById("progressBox").classList.toggle("has-failures", (Number(jobState.failed) || 0) > 0);
+      setProgressDisplay(progressPercent(), text || runningJobText());
+    }
+
+    function updateRenderErrorsUI() {
+      const box = document.getElementById("renderErrors");
+      const title = document.getElementById("renderErrorsTitle");
+      const list = document.getElementById("renderErrorsList");
+      if (lastErrors.length === 0) {
+        box.hidden = true;
+        title.textContent = "Kegagalan terakhir";
+        list.innerHTML = "";
+        return;
+      }
+      box.hidden = false;
+      title.textContent = `Kegagalan terakhir (${lastErrors.length})`;
+      list.innerHTML = lastErrors.map((entry) => (
+        `<li><strong>${escapeHtml(entry.filename)}</strong>: ${escapeHtml(entry.error)}</li>`
+      )).join("");
+    }
+
+    function clearRenderErrors() {
+      lastErrors = [];
+      recentErrorToasts.clear();
+      updateRenderErrorsUI();
+    }
+
+    function recordRenderError(filename, error) {
+      if (!lastErrors.some((entry) => entry.filename === filename && entry.error === error)) {
+        lastErrors.unshift({ filename, error });
+        if (lastErrors.length > MAX_RENDER_ERRORS) {
+          lastErrors.pop();
+        }
+      }
+      updateRenderErrorsUI();
+    }
+
+
     async function init() {
       await loadProductList();
+      setupKeyboardShortcuts();
+    }
+
+    function setupKeyboardShortcuts() {
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          const modal = document.getElementById("modalProduct");
+          if (modal.classList.contains("active")) {
+            closeNewProductModal();
+          }
+        }
+      });
+
+      // Close modal on backdrop click
+      document.getElementById("modalProduct").addEventListener("click", (e) => {
+        if (e.target.id === "modalProduct") {
+          closeNewProductModal();
+        }
+      });
     }
 
     async function loadProductList() {
-      const { products } = await api("/api/products");
-      const sel = document.getElementById("productSelect");
-      sel.innerHTML = "";
-      if (products.length === 0) {
-        // Otomatis buat produk default
-        await api("/api/products", {
-          method: "POST",
-          body: { slug: "produk-utama", displayName: "Produk Utama" }
-        });
-        return loadProductList();
-      }
+      try {
+        const { products } = await api("/api/products");
+        const sel = document.getElementById("productSelect");
+        sel.innerHTML = "";
 
-      for (const p of products) {
-        const opt = document.createElement("option");
-        opt.value = p.slug;
-        opt.textContent = `${p.displayName} (${p.slug})`;
-        sel.appendChild(opt);
-      }
+        if (products.length === 0) {
+          await api("/api/products", {
+            method: "POST",
+            body: { slug: "produk-utama", displayName: "Produk Utama" }
+          });
+          return loadProductList();
+        }
 
-      currentSlug = products[0].slug;
-      sel.value = currentSlug;
-      await loadProductDetails();
+        for (const p of products) {
+          const opt = document.createElement("option");
+          opt.value = p.slug;
+          opt.textContent = `${p.displayName} (${p.slug})`;
+          sel.appendChild(opt);
+        }
+
+        if (!currentSlug || !products.some(p => p.slug === currentSlug)) {
+          currentSlug = products[0].slug;
+        }
+        sel.value = currentSlug;
+        await loadProductDetails();
+      } catch (err) {
+        showToast(`Gagal memuat daftar produk: ${err.message}`, "error");
+      }
     }
 
     async function switchProduct() {
       currentSlug = document.getElementById("productSelect").value;
+      clearRenderErrors();
+      resetRenderState();
+      resetPlanState();
       await loadProductDetails();
     }
 
     async function loadProductDetails() {
       connectSSE();
-      const { registry } = await api(`/api/products/${currentSlug}`);
-      renderClips("listHooks", "badgeHooks", registry.assets.hook, "hook");
-      renderClips("listBodies", "badgeBodies", registry.assets.body, "body");
-      renderClips("listCtas", "badgeCtas", registry.assets.cta, "cta");
-      await loadPlan();
+      try {
+        const { registry } = await api(`/api/products/${currentSlug}`);
+        renderClips("listHooks", "badgeHooks", registry.assets.hook, "hook");
+        renderClips("listBodies", "badgeBodies", registry.assets.body, "body");
+        renderClips("listCtas", "badgeCtas", registry.assets.cta, "cta");
+        await loadPlan();
+      } catch (err) {
+        disableGenerate(`Data produk gagal dimuat: ${err.message}`, "Generate Tidak Tersedia");
+        setPlanStatus(`Data produk gagal dimuat: ${err.message}`, "error");
+        showToast(`Gagal membaca data produk: ${err.message}`, "error");
+      }
     }
 
     function renderClips(containerId, badgeId, assetsMap, kind) {
@@ -445,98 +1316,586 @@
       const items = Object.entries(assetsMap || {});
       document.getElementById(badgeId).textContent = `${items.length} File`;
 
+      const kindFolderNames = { hook: "hooks", body: "bodies", cta: "ctas" };
+      const folderName = kindFolderNames[kind];
+
       if (items.length === 0) {
-        container.innerHTML = `<div style="color: #64748b; font-size: 0.85rem; text-align: center; margin-top: 40px;">Belum ada video di folder database/${currentSlug}/${kind}s/</div>`;
+        container.innerHTML = `
+          <div class="stage-empty">
+            <div class="stage-empty-icon" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </div>
+            <div class="stage-empty-title">Folder ${kind} kosong</div>
+            <div class="stage-empty-desc">Simpan file .mp4 ke database/${currentSlug}/${folderName}/ lalu tekan Pindai Ulang.</div>
+            <button class="btn btn-secondary btn-sm" onclick="openDatabaseDir('${folderName}', this)" style="margin-top: 6px;">Buka Folder ${folderName}</button>
+          </div>
+        `;
         return;
       }
 
       for (const [file, item] of items) {
         const card = document.createElement("div");
         card.className = "clip-card";
+        const status = item.status || "ERROR";
+        const badgeClass = status === "READY"
+          ? "badge-ready"
+          : (status === "PROCESSING" ? "badge-normalizing" : "badge-error");
+        const rawDuration = item.durationSeconds;
+        const duration = (rawDuration === null || rawDuration === undefined || rawDuration === "") ? NaN : Number(rawDuration);
+        const durationText = Number.isFinite(duration) && duration >= 0 ? `${duration.toFixed(1)}s` : "-";
+        const rawSize = item.sizeBytes;
+        const sizeBytes = (rawSize === null || rawSize === undefined || rawSize === "") ? NaN : Number(rawSize);
+        const sizeText = Number.isFinite(sizeBytes) && sizeBytes >= 0 ? `${(sizeBytes / 1024 / 1024).toFixed(1)} MB` : "-";
+        const errorHtml = item.error
+          ? `<div class="clip-error" role="note"><strong>Error:</strong> ${escapeHtml(item.error)}</div>`
+          : "";
+
         card.innerHTML = `
-          <div class="clip-header">
+          <div class="clip-card-header">
             <div>
-              <div class="clip-name">${file}</div>
-              <div class="clip-meta">${item.durationSeconds.toFixed(1)}s · ${(item.sizeBytes / 1024 / 1024).toFixed(1)} MB</div>
+              <div class="clip-name">${escapeHtml(file)}</div>
+              <div class="clip-specs tabular-num">
+                <span>${durationText}</span>
+                <span>·</span>
+                <span>${sizeText}</span>
+              </div>
             </div>
-            <span class="badge ${item.status === 'READY' ? 'badge-ready' : 'badge-error'}">${item.status}</span>
+            <span class="clip-badge-status ${badgeClass}">${escapeHtml(status)}</span>
           </div>
-          <video controls preload="none">
-            <source src="/api/products/${currentSlug}/media/${kind}/${encodeURIComponent(file)}" type="video/mp4">
-          </video>
+          ${errorHtml}
+          <div class="video-viewport">
+            <video controls preload="metadata" playsinline title="${escapeHtml(file)}">
+              <source src="/api/products/${currentSlug}/media/${kind}/${encodeURIComponent(file)}" type="video/mp4">
+              Browser tidak mendukung preview video.
+            </video>
+          </div>
         `;
         container.appendChild(card);
       }
     }
 
-    async function loadPlan() {
-      const scope = document.getElementById("scopeSelect").value;
-      const { plan } = await api(`/api/products/${currentSlug}/plan?scope=${scope}`);
+    function setPlanBanner(bannerId, listId, items) {
+      const banner = document.getElementById(bannerId);
+      const list = document.getElementById(listId);
+      const values = Array.isArray(items)
+        ? items.filter((item) => typeof item === "string" && item.trim() !== "")
+        : [];
+      if (values.length === 0) {
+        banner.hidden = true;
+        list.innerHTML = "";
+        return;
+      }
+      banner.hidden = false;
+      list.innerHTML = values.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+    }
 
-      document.getElementById("statTotal").textContent = plan.counts.total;
-      document.getElementById("statDone").textContent = plan.counts.done;
-      document.getElementById("statQueued").textContent = plan.counts.queued;
-      document.getElementById("statEta").textContent = `${plan.estimate.etaSeconds}s`;
+    function renderPlanMetrics(plan) {
+      const counts = plan.counts || {};
+      const estimate = plan.estimate || {};
+      document.getElementById("statTotal").textContent = Number(counts.total) || 0;
+      document.getElementById("statDone").textContent = Number(counts.done) || 0;
+      document.getElementById("statQueued").textContent = Number(counts.queued) || 0;
+      document.getElementById("statStale").textContent = Number(counts.stale) || 0;
+      document.getElementById("statOrphan").textContent = Number(counts.orphan) || 0;
 
-      const btnGen = document.getElementById("btnGenerate");
-      if (plan.counts.queued === 0) {
-        btnGen.disabled = true;
-        btnGen.textContent = "Semua Video Sudah Selesai";
-      } else {
-        btnGen.disabled = false;
-        btnGen.textContent = `🚀 Generate ${plan.counts.queued} Video Baru`;
+      const requiredMb = Number(estimate.requiredMb);
+      const freeMb = Number(estimate.freeMb);
+      const diskEl = document.getElementById("statDisk");
+      diskEl.textContent = `${formatMb(requiredMb)} / ${formatMb(freeMb)}`;
+      diskEl.title = Number.isFinite(requiredMb) && Number.isFinite(freeMb)
+        ? `Perlu ${formatMb(requiredMb)}, bebas ${formatMb(freeMb)}`
+        : "Informasi disk tidak tersedia";
+
+      const eta = Number(estimate.etaSeconds);
+      document.getElementById("statEta").textContent = Number.isFinite(eta) ? `${Math.round(eta)} dtk` : "-";
+    }
+
+    function applyPlanButtonState(plan) {
+      const counts = plan.counts || {};
+      const blockers = Array.isArray(plan.blockers) ? plan.blockers : [];
+      const queued = Number(counts.queued) || 0;
+      const scope = plan.scope || document.getElementById("scopeSelect").value;
+      const label = scope === "all"
+        ? `Render ${queued} Video`
+        : (scope === "stale" ? `Generate ${queued} Video Stale` : `Generate ${queued} Video Baru`);
+
+      if (renderActive || planRunning) {
+        disableGenerate("Render sedang berjalan. Tunggu sampai selesai atau hentikan render.", "Render Sedang Berjalan");
+        return;
+      }
+
+      if (blockers.length > 0) {
+        disableGenerate(`Render diblokir: ${blockers[0]}`, "Render Diblokir");
+        return;
+      }
+
+      if (queued === 0) {
+        let reason = "Tidak ada kombinasi baru pada cakupan ini.";
+        if ((Number(counts.stale) || 0) > 0) {
+          reason = `${counts.stale} kombinasi stale tersedia. Pilih cakupan Stale atau Semua.`;
+        } else if ((Number(counts.total) || 0) > 0) {
+          reason = "Semua kombinasi pada cakupan ini sudah selesai.";
+        } else {
+          reason = "Belum ada aset READY. Tambahkan video lalu tekan Pindai Ulang.";
+        }
+        disableGenerate(reason, "Tidak Ada Antrean");
+        return;
+      }
+
+      enableGenerate(label);
+    }
+
+    function schedulePlanRetry() {
+      if (planRetryTimer) return;
+      if (planRetryCount >= 4) {
+        if (planPending) {
+          setPlanStatus("Server masih melaporkan render berjalan. Muat ulang halaman jika status tidak berubah.", "warning");
+          disableGenerate("Status render belum bisa dipastikan. Muat ulang halaman untuk menghitung ulang rencana.", "Status Render Tidak Pasti");
+        }
+        return;
+      }
+      const delays = [3000, 5000, 8000, 12000];
+      const delay = delays[planRetryCount] || 12000;
+      planRetryTimer = setTimeout(() => {
+        planRetryTimer = null;
+        planRetryCount++;
+        if (planPending) {
+          loadPlan({ silent: true });
+        }
+      }, delay);
+    }
+
+    async function loadPlan(opts = {}) {
+      try {
+        const scope = document.getElementById("scopeSelect").value;
+        const { plan } = await api(`/api/products/${currentSlug}/plan?scope=${scope}`);
+
+        planPending = false;
+        planRetryCount = 0;
+        if (planRetryTimer) {
+          clearTimeout(planRetryTimer);
+          planRetryTimer = null;
+        }
+        if (!renderActive) planRunning = false;
+        if (!renderActive && !planRunning) setPlanStatus("");
+
+        lastPlan = plan;
+        renderPlanMetrics(plan);
+        setPlanBanner("planBlockers", "planBlockersList", plan.blockers);
+        setPlanBanner("planWarnings", "planWarningsList", plan.warnings);
+        applyPlanButtonState(plan);
+      } catch (err) {
+        if (err.code === "E_JOB_RUNNING" || err.status === 409) {
+          planRunning = true;
+          planPending = true;
+          if (!renderActive) hideCancel();
+          setPlanBanner("planBlockers", "planBlockersList", []);
+          setPlanBanner("planWarnings", "planWarningsList", []);
+          disableGenerate("Render sedang berjalan. Generate aktif lagi setelah render selesai.", "Render Sedang Berjalan");
+          setPlanStatus("Render sedang berjalan. Rencana akan dihitung ulang setelah render selesai.", "warning");
+          schedulePlanRetry();
+          return;
+        }
+        setPlanBanner("planBlockers", "planBlockersList", []);
+        setPlanBanner("planWarnings", "planWarningsList", []);
+        disableGenerate(`Rencana render gagal dimuat: ${err.message}`, "Generate Tidak Tersedia");
+        setPlanStatus(`Rencana render gagal dimuat: ${err.message}`, "error");
+        if (!opts.silent) {
+          showToast(`Gagal menghitung kombinasi rencana: ${err.message}`, "error");
+        }
       }
     }
 
     async function rescanCurrentProduct() {
-      await api(`/api/products/${currentSlug}/scan`, { method: "POST" });
-      await loadProductDetails();
+      const btn = document.getElementById("btnRescan");
+      const icon = document.getElementById("iconRescan");
+      btn.disabled = true;
+      icon.classList.add("spin");
+
+      try {
+        await api(`/api/products/${currentSlug}/scan`, { method: "POST" });
+        showToast("Pemindaian dan normalisasi folder selesai.", "success");
+        await loadProductDetails();
+      } catch (err) {
+        showToast(`Gagal memindai folder: ${err.message}`, "error");
+      } finally {
+        btn.disabled = false;
+        icon.classList.remove("spin");
+      }
     }
 
     async function startRender() {
-      const scope = document.getElementById("scopeSelect").value;
-      document.getElementById("btnGenerate").disabled = true;
-      document.getElementById("btnCancel").style.display = "inline-flex";
-      document.getElementById("progressBox").classList.add("active");
+      if (renderActive || planRunning) return;
 
-      await api(`/api/products/${currentSlug}/render`, {
-        method: "POST",
-        body: { scope }
-      });
+      const scope = document.getElementById("scopeSelect").value;
+      clearRenderErrors();
+      cancelHandled = false;
+      resetJobState();
+      renderActive = true;
+      planRunning = true;
+      showProgress();
+      showCancel();
+      disableGenerate("Render sedang berjalan. Tunggu sampai selesai atau hentikan render.", "Menyiapkan Render");
+      setProgressDisplay(0, "Menyiapkan penggabungan video lossless...");
+
+      try {
+        const data = await api(`/api/products/${currentSlug}/render`, {
+          method: "POST",
+          body: { scope }
+        });
+        if (data && data.job) {
+          hydrateJob(data.job);
+          applyRunningJobUI();
+        }
+      } catch (err) {
+        if (err.code === "E_JOB_RUNNING" || err.status === 409) {
+          renderActive = false;
+          planRunning = true;
+          planPending = true;
+          hideCancel();
+          showProgress();
+          setProgressDisplay(0, "Render sedang berjalan. Menunggu status terbaru...");
+          disableGenerate("Render sedang berjalan. Generate aktif lagi setelah render selesai.", "Render Sedang Berjalan");
+          setPlanStatus("Render sedang berjalan. Menunggu status terbaru dari server.", "warning");
+          connectSSE();
+          schedulePlanRetry();
+          return;
+        }
+        if (err.code === "E_SCAN_REQUIRED") {
+          renderActive = false;
+          planRunning = false;
+          hideCancel();
+          hideProgress();
+          setPlanStatus(err.message, "warning");
+          disableGenerate("Klik Pindai Ulang untuk menyiapkan cache normalisasi.", "Pindai Ulang Dulu");
+          showToast(err.message, "warning", {
+            duration: 12000,
+            action: { label: "Pindai Ulang", onClick: () => rescanCurrentProduct() }
+          });
+          return;
+        }
+        if (err.code === "E_NO_ITEMS") {
+          renderActive = false;
+          planRunning = false;
+          hideCancel();
+          hideProgress();
+          showToast(err.message, "warning");
+          await loadPlan({ silent: true });
+          return;
+        }
+        renderActive = false;
+        planRunning = false;
+        hideCancel();
+        hideProgress();
+        showToast(`Gagal memulai render: ${err.message}`, "error");
+        await loadPlan({ silent: true });
+      }
     }
 
     async function cancelRender() {
-      await api(`/api/products/${currentSlug}/render/cancel`, { method: "POST" });
+      const btn = document.getElementById("btnCancel");
+      btn.disabled = true;
+      try {
+        await api(`/api/products/${currentSlug}/render/cancel`, { method: "POST" });
+        showToast("Permintaan pembatalan render dikirim.", "info");
+      } catch (err) {
+        btn.disabled = false;
+        if (err.code === "E_NOT_FOUND" || err.status === 404) {
+          hideCancel();
+          planRunning = false;
+          showToast(err.message, "warning");
+          await loadPlan({ silent: true });
+          return;
+        }
+        showToast(err.message || "Gagal membatalkan render.", "error");
+      }
+    }
+
+    function parseSSEData(event) {
+      if (!event || typeof event.data !== "string" || event.data === "") return null;
+      try {
+        return JSON.parse(event.data);
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function clearPlanRetry() {
+      if (planRetryTimer) {
+        clearTimeout(planRetryTimer);
+        planRetryTimer = null;
+      }
+      planPending = false;
+      planRetryCount = 0;
     }
 
     function connectSSE() {
-      if (sseSource) sseSource.close();
+      if (sseSource) {
+        sseSource.close();
+        sseSource = null;
+      }
+      document.getElementById("sseStatus").hidden = true;
       sseSource = new EventSource(`/api/products/${currentSlug}/events`);
 
+      sseSource.addEventListener("open", () => {
+        document.getElementById("sseStatus").hidden = true;
+      });
+
+      // Hanya event koneksi yang ditangani di sini, tanpa toast berulang.
+      // Event "error" dari server juga memicu onerror, jadi data event harus diabaikan.
+      sseSource.onerror = (event) => {
+        if (event && typeof event.data === "string") return;
+        document.getElementById("sseStatus").hidden = false;
+      };
+
+      sseSource.addEventListener("snapshot", (e) => {
+        const data = parseSSEData(e);
+        if (!data) return;
+        const job = data.job || null;
+        const wasActive = renderActive || Boolean(jobState.jobId) || planRunning;
+
+        if (job && job.status === "RUNNING") {
+          const isNewJob = Boolean(job.jobId) && job.jobId !== jobState.jobId;
+          if (isNewJob) {
+            clearRenderErrors();
+            cancelHandled = false;
+          }
+          hydrateJob(job);
+          planRunning = true;
+          clearPlanRetry();
+          setPlanStatus("");
+          applyRunningJobUI();
+          return;
+        }
+
+        resetRenderState();
+        planRunning = false;
+        clearPlanRetry();
+        if (wasActive) {
+          loadPlan({ silent: true });
+        }
+      });
+
       sseSource.addEventListener("progress", (e) => {
-        const data = JSON.parse(e.data);
-        const pct = Math.round((data.done / data.total) * 100);
-        document.getElementById("progressText").textContent = `Memproses: ${data.current} (${data.done}/${data.total})`;
-        document.getElementById("progressPercent").textContent = `${pct}%`;
-        document.getElementById("progressBarFill").style.width = `${pct}%`;
+        const data = parseSSEData(e);
+        if (!data) return;
+        const total = Number(data.total);
+        if (Number.isFinite(total)) jobState.total = total;
+        const done = Number(data.done);
+        if (Number.isFinite(done)) jobState.done = done;
+        const failed = Number(data.failed);
+        if (Number.isFinite(failed)) jobState.failed = failed;
+        jobState.current = data.current || jobState.current;
+        jobState.status = "RUNNING";
+        planRunning = true;
+        clearPlanRetry();
+        applyRunningJobUI(`Memproses: ${data.current || "-"} (${processedCount()}/${jobState.total})`);
       });
 
-      sseSource.addEventListener("done", () => {
-        document.getElementById("btnCancel").style.display = "none";
-        document.getElementById("progressText").textContent = "Semua render selesai!";
-        document.getElementById("progressBarFill").style.width = "100%";
-        loadPlan();
+      sseSource.addEventListener("error", (e) => {
+        // EventSource juga memakai tipe "error" untuk masalah koneksi.
+        const data = parseSSEData(e);
+        if (!data) return;
+
+        // Event job-level dari server: { code, message, job } tanpa filename.
+        if (!data.filename && data.message) {
+          jobState.status = "FAILED";
+          recordRenderError("(job)", data.message);
+          showToast(`Render gagal: ${data.message}`, "error", { duration: 8000 });
+          applyRunningJobUI(`Render gagal: ${data.message}`);
+          return;
+        }
+
+        const filename = data.filename || "(tanpa nama)";
+        const error = typeof data.error === "string" && data.error ? data.error : "Kegagalan tanpa pesan";
+        const total = Number(data.total);
+        if (Number.isFinite(total)) jobState.total = total;
+
+        jobState.failed = (Number(jobState.failed) || 0) + 1;
+        jobState.current = filename;
+        jobState.status = "RUNNING";
+        planRunning = true;
+        clearPlanRetry();
+        recordRenderError(filename, error);
+
+        const now = Date.now();
+        for (const [key, timestamp] of recentErrorToasts) {
+          if (now - timestamp > ERROR_TOAST_DEDUPE_MS) {
+            recentErrorToasts.delete(key);
+          }
+        }
+        const dedupeKey = `${filename}\u0000${error}`;
+        if (!recentErrorToasts.has(dedupeKey)) {
+          recentErrorToasts.set(dedupeKey, now);
+          showToast(`Gagal memproses ${filename}: ${error}`, "error", { duration: 7000 });
+        }
+
+        applyRunningJobUI(`Gagal: ${filename} (${processedCount()}/${jobState.total})`);
       });
 
-      sseSource.addEventListener("cancelled", () => {
-        document.getElementById("btnCancel").style.display = "none";
-        document.getElementById("progressText").textContent = "Render dibatalkan.";
-        loadPlan();
+      sseSource.addEventListener("done", (e) => {
+        const data = parseSSEData(e);
+        const job = data && data.job ? data.job : null;
+        if (job) hydrateJob(job);
+
+        const status = (job && job.status) || jobState.status;
+        const done = Number(jobState.done) || 0;
+        const failed = Number(jobState.failed) || 0;
+        const total = Number(jobState.total) || 0;
+
+        renderActive = false;
+        planRunning = false;
+        clearPlanRetry();
+        hideCancel();
+        showProgress();
+        setPlanStatus("");
+
+        if (status === "CANCELLED" || (job && job.cancelled)) {
+          jobState.status = "CANCELLED";
+          document.getElementById("progressBox").classList.remove("has-failures");
+          setProgressDisplay(progressPercent(), `Render dihentikan. ${done} berhasil, ${failed} gagal.`);
+          if (!cancelHandled) {
+            showToast("Render dihentikan.", "info");
+          }
+        } else if (status === "INTERRUPTED") {
+          jobState.status = "INTERRUPTED";
+          document.getElementById("progressBox").classList.add("has-failures");
+          setProgressDisplay(progressPercent(), `Render terhenti. ${done} berhasil, ${failed} gagal.`);
+          showToast("Render terhenti sebelum selesai. Lihat daftar kegagalan.", "warning", { duration: 7000 });
+        } else if (status === "FAILED" || failed > 0) {
+          jobState.status = status === "DONE" ? "DONE_WITH_FAILURES" : status;
+          document.getElementById("progressBox").classList.add("has-failures");
+          setProgressDisplay(progressPercent(), `Render selesai dengan ${failed} kegagalan. ${done} berhasil dari ${total}.`);
+          showToast(`Render selesai dengan ${failed} kegagalan. Lihat daftar kegagalan di panel status.`, "warning", { duration: 8000 });
+        } else {
+          jobState.status = "DONE";
+          document.getElementById("progressBox").classList.remove("has-failures");
+          setProgressDisplay(100, `Render selesai. ${done} video berhasil dibuat.`);
+          showToast(`Render selesai: ${done} video berhasil dibuat.`, "success");
+        }
+
+        cancelHandled = false;
+        loadPlan({ silent: true });
+      });
+
+      sseSource.addEventListener("cancelled", (e) => {
+        const data = parseSSEData(e);
+        const job = data && data.job ? data.job : null;
+        if (job) hydrateJob(job);
+
+        cancelHandled = true;
+        renderActive = false;
+        planRunning = false;
+        clearPlanRetry();
+        hideCancel();
+        showProgress();
+        jobState.status = "CANCELLED";
+        document.getElementById("progressBox").classList.remove("has-failures");
+        setProgressDisplay(
+          progressPercent(),
+          `Render dihentikan. ${Number(jobState.done) || 0} berhasil, ${Number(jobState.failed) || 0} gagal.`
+        );
+        // Server tidak mengirim `done` setelah cancel; segarkan angka plan di sini.
+        loadPlan({ silent: true });
       });
     }
 
-    function openOutputDir() {
-      api(`/api/products/${currentSlug}/open-output`, { method: "POST" });
+    function getCurrentSlug() {
+      const sel = document.getElementById("productSelect");
+      if (sel && sel.value) {
+        currentSlug = sel.value;
+      }
+      return currentSlug;
+    }
+
+    async function withBusyButton(btn, action) {
+      const target = btn && typeof btn.disabled === "boolean" ? btn : null;
+      if (target) {
+        target.disabled = true;
+        target.setAttribute("aria-busy", "true");
+      }
+      const startedAt = Date.now();
+      try {
+        return await action();
+      } finally {
+        const remaining = 1000 - (Date.now() - startedAt);
+        if (remaining > 0) {
+          await new Promise((resolve) => setTimeout(resolve, remaining));
+        }
+        if (target) {
+          target.disabled = false;
+          target.removeAttribute("aria-busy");
+        }
+      }
+    }
+
+    function showFolderToast(label, path) {
+      const cleanPath = typeof path === "string" ? path.trim() : "";
+      const hint = "Jika tidak terlihat, cek taskbar.";
+      const message = cleanPath
+        ? `Folder ${label} dibuka: ${cleanPath}. ${hint}`
+        : `Folder ${label} dibuka. ${hint}`;
+
+      const canCopy = cleanPath !== ""
+        && typeof navigator !== "undefined"
+        && navigator.clipboard
+        && typeof navigator.clipboard.writeText === "function";
+
+      if (!canCopy) {
+        showToast(message, "success");
+        return;
+      }
+
+      showToast(message, "success", {
+        duration: 10000,
+        action: {
+          label: "Copy path",
+          onClick: async (btn) => {
+            try {
+              await navigator.clipboard.writeText(cleanPath);
+              btn.textContent = "Tersalin";
+            } catch (err) {
+              showToast("Gagal menyalin path. Salin manual dari pesan ini.", "error");
+            }
+          }
+        }
+      });
+    }
+
+    async function openOutputDir(btn) {
+      const slug = getCurrentSlug();
+      if (!slug) {
+        showToast("Pilih produk terlebih dahulu", "error");
+        return;
+      }
+      try {
+        await withBusyButton(btn, async () => {
+          const data = await api(`/api/products/${slug}/open-output`, { method: "POST" });
+          showFolderToast("hasil", data && data.path);
+        });
+      } catch (err) {
+        showToast(err.message || "Gagal membuka folder output.", "error");
+      }
+    }
+
+    async function openDatabaseDir(kind = "", btn = null) {
+      const slug = getCurrentSlug();
+      if (!slug) {
+        showToast("Pilih produk terlebih dahulu", "error");
+        return;
+      }
+      const query = kind ? `?kind=${encodeURIComponent(kind)}` : "";
+      const label = kind || "mentahan";
+      try {
+        await withBusyButton(btn, async () => {
+          const data = await api(`/api/products/${slug}/open-database${query}`, { method: "POST" });
+          showFolderToast(label, data && data.path);
+        });
+      } catch (err) {
+        showToast(err.message || "Gagal membuka folder database.", "error");
+      }
     }
 
     function downloadCsv() {
@@ -544,10 +1903,19 @@
     }
 
     function openNewProductModal() {
-      document.getElementById("modalProduct").classList.add("active");
+      lastActiveElement = document.activeElement;
+      const modal = document.getElementById("modalProduct");
+      modal.classList.add("active");
+      document.getElementById("modalError").classList.remove("visible");
+      document.getElementById("newProductName").value = "";
+      document.getElementById("newProductSlug").value = "";
+      setTimeout(() => document.getElementById("newProductName").focus(), 50);
     }
+
     function closeNewProductModal() {
-      document.getElementById("modalProduct").classList.remove("active");
+      const modal = document.getElementById("modalProduct");
+      modal.classList.remove("active");
+      if (lastActiveElement) lastActiveElement.focus();
     }
 
     document.getElementById("newProductName").addEventListener("input", (e) => {
@@ -558,14 +1926,35 @@
     async function submitNewProduct() {
       const displayName = document.getElementById("newProductName").value.trim();
       const slug = document.getElementById("newProductSlug").value.trim();
-      if (!displayName || !slug) return alert("Mohon lengkapi nama produk");
+      const errorMsg = document.getElementById("modalError");
 
-      await api("/api/products", {
-        method: "POST",
-        body: { slug, displayName }
-      });
-      closeNewProductModal();
-      await loadProductList();
+      if (!displayName || !slug) {
+        errorMsg.classList.add("visible");
+        return;
+      }
+      errorMsg.classList.remove("visible");
+
+      try {
+        await api("/api/products", {
+          method: "POST",
+          body: { slug, displayName }
+        });
+        showToast(`Produk "${displayName}" berhasil dibuat!`, "success");
+        closeNewProductModal();
+        currentSlug = slug;
+        await loadProductList();
+      } catch (err) {
+        showToast(`Gagal membuat produk: ${err.message}`, "error");
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
     }
 
     window.addEventListener("DOMContentLoaded", init);

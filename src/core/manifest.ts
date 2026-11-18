@@ -3,6 +3,30 @@ import path from "node:path";
 import { Manifest, ManifestSchema, OutputItem } from "../schemas/manifest.js";
 import { ProductConfig, computeSpecHash } from "../schemas/product.js";
 
+/** Delay retry untuk rename/append yang gagal karena file lock di Windows. */
+const IO_RETRY_DELAYS_MS = [100, 300, 900, 2000];
+const RETRYABLE_IO_CODES = new Set(["EPERM", "EBUSY", "EACCES"]);
+
+function isRetryableIoError(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException | undefined)?.code;
+  return typeof code === "string" && RETRYABLE_IO_CODES.has(code);
+}
+
+/**
+ * Sleep sinkron singkat (dipakai di API sync yang sudah ada).
+ * Atomics.wait tidak memblokir event loop lain lebih lama dari delay yang diminta.
+ */
+function sleepSync(ms: number): void {
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  } catch {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      // spin fallback
+    }
+  }
+}
+
 export class ManifestManager {
   /**
    * Membaca manifest.json atau menginisialisasi manifest kosong jika belum ada.
@@ -66,7 +90,7 @@ export class ManifestManager {
 
     const jsonlPath = path.join(outputDir, "manifest.jsonl");
     const logLine = JSON.stringify({ filename, item }) + "\n";
-    fs.appendFileSync(jsonlPath, logLine, "utf-8");
+    this.appendWithRetry(jsonlPath, logLine);
 
     if (forceFlush || Object.keys(manifest.outputs).length % 10 === 0) {
       this.saveManifest(outputDir, manifest);
@@ -74,13 +98,47 @@ export class ManifestManager {
   }
 
   /**
-   * Menulis manifest.json secara atomik (.tmp -> rename).
+   * Menulis manifest.json secara atomik (.tmp -> rename) dengan retry singkat
+   * untuk EPERM/EBUSY/EACCES. Manifest lama tidak disentuh jika rename gagal,
+   * dan file .tmp dibiarkan agar data terbaru masih bisa dipulihkan manual.
    */
   public static saveManifest(outputDir: string, manifest: Manifest): void {
+    fs.mkdirSync(outputDir, { recursive: true });
     const manifestPath = path.join(outputDir, "manifest.json");
     const tmpPath = path.join(outputDir, "manifest.json.tmp");
 
     fs.writeFileSync(tmpPath, JSON.stringify(manifest, null, 2), "utf-8");
-    fs.renameSync(tmpPath, manifestPath);
+
+    let lastErr: unknown;
+    for (let attempt = 0; attempt <= IO_RETRY_DELAYS_MS.length; attempt++) {
+      try {
+        fs.renameSync(tmpPath, manifestPath);
+        return;
+      } catch (err) {
+        lastErr = err;
+        const delay = IO_RETRY_DELAYS_MS[attempt];
+        if (delay === undefined || !isRetryableIoError(err)) break;
+        sleepSync(delay);
+      }
+    }
+
+    throw lastErr;
+  }
+
+  private static appendWithRetry(filePath: string, content: string): void {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt <= IO_RETRY_DELAYS_MS.length; attempt++) {
+      try {
+        fs.appendFileSync(filePath, content, "utf-8");
+        return;
+      } catch (err) {
+        lastErr = err;
+        const delay = IO_RETRY_DELAYS_MS[attempt];
+        if (delay === undefined || !isRetryableIoError(err)) break;
+        sleepSync(delay);
+      }
+    }
+
+    throw lastErr;
   }
 }

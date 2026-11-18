@@ -10,7 +10,25 @@ import { ProductConfigSchema } from "./schemas/product.js";
 import { AssetsRegistrySchema } from "./schemas/assets.js";
 import { Job, JobScope } from "./schemas/job.js";
 
-const ROOT_DIR = path.resolve(import.meta.dirname, "..");
+function findProjectRoot(): string {
+  let curr = import.meta.dirname;
+  while (curr !== path.dirname(curr)) {
+    if (fs.existsSync(path.join(curr, "package.json"))) {
+      return curr;
+    }
+    curr = path.dirname(curr);
+  }
+  return process.cwd();
+}
+const ROOT_DIR = findProjectRoot();
+
+function writeJsonAtomic(targetPath: string, data: unknown): void {
+  const dir = path.dirname(targetPath);
+  fs.mkdirSync(dir, { recursive: true });
+  const tmpPath = path.join(dir, `.${path.basename(targetPath)}.${process.pid}.tmp`);
+  fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+  fs.renameSync(tmpPath, targetPath);
+}
 
 async function main() {
   const args = process.argv.slice(2);
@@ -47,7 +65,7 @@ async function main() {
     product = ProductConfigSchema.parse(JSON.parse(fs.readFileSync(productConfigPath, "utf-8")));
   } else {
     fs.mkdirSync(productDir, { recursive: true });
-    fs.writeFileSync(productConfigPath, JSON.stringify(product, null, 2), "utf-8");
+    writeJsonAtomic(productConfigPath, product);
   }
 
   // Load or init assets registry
@@ -67,7 +85,7 @@ async function main() {
   if (command === "scan") {
     console.log(`Scanning assets for product: ${productSlug}...`);
     registry = await ScanEngine.scanProductAssets(ROOT_DIR, product, registry);
-    fs.writeFileSync(assetsPath, JSON.stringify(registry, null, 2), "utf-8");
+    writeJsonAtomic(assetsPath, registry);
     console.log(`✅ Scan completed.`);
     console.log(`   Hooks  : ${Object.keys(registry.assets.hook).length}`);
     console.log(`   Bodies : ${Object.keys(registry.assets.body).length}`);
@@ -90,7 +108,7 @@ async function main() {
   if (command === "render") {
     console.log(`Scanning assets...`);
     registry = await ScanEngine.scanProductAssets(ROOT_DIR, product, registry);
-    fs.writeFileSync(assetsPath, JSON.stringify(registry, null, 2), "utf-8");
+    writeJsonAtomic(assetsPath, registry);
 
     const plan = await PlanEngine.createPlan(ROOT_DIR, product, registry, manifest, scope);
     console.log(`Plan ready: ${plan.counts.queued} video to render.`);

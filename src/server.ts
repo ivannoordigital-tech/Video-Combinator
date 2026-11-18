@@ -2,37 +2,98 @@ import express, { Request, Response, NextFunction } from "express";
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { FFmpegResolver } from "./core/ffmpeg.js";
 import { ScanEngine } from "./core/scan.js";
+import { IngestEngine } from "./core/ingest.js";
 import { PlanEngine } from "./core/plan.js";
+import type { PlanResult } from "./core/plan.js";
 import { RenderEngine } from "./core/render.js";
 import { ManifestManager } from "./core/manifest.js";
+import type { Manifest } from "./schemas/manifest.js";
 import { ReportGenerator } from "./core/report.js";
-import { ProductConfigSchema, ProductConfig } from "./schemas/product.js";
+import { ProductConfigSchema, ProductConfig, ProductSlugRegex } from "./schemas/product.js";
 import { AssetsRegistrySchema, AssetsRegistry } from "./schemas/assets.js";
-import { Job, JobScope } from "./schemas/job.js";
+import { Job, JobScopeSchema } from "./schemas/job.js";
 
-const ROOT_DIR = path.resolve(import.meta.dirname, "..");
+function findProjectRoot(): string {
+  let curr = import.meta.dirname;
+  while (curr !== path.dirname(curr)) {
+    if (fs.existsSync(path.join(curr, "package.json"))) {
+      return curr;
+    }
+    curr = path.dirname(curr);
+  }
+  return process.cwd();
+}
+const ROOT_DIR = findProjectRoot();
 const app = express();
 const server = http.createServer(app);
 
-app.use(express.json());
-app.use(express.static(path.join(ROOT_DIR, "public")));
+app.disable("x-powered-by");
 
 // --- Security Middleware (FR-11) ---
+// Dijalankan paling awal: sebelum body parser maupun static file.
+function sendJsonError(res: Response, status: number, code: string, message: string, details?: unknown): void {
+  const body = details === undefined ? { error: { code, message } } : { error: { code, message, details } };
+  res.status(status).json(body);
+}
+
+function hostnameFromHostHeader(hostHeader: string | undefined): string | null {
+  if (!hostHeader) return null;
+  const trimmed = hostHeader.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("[")) {
+    const end = trimmed.indexOf("]");
+    if (end === -1) return null;
+    return trimmed.slice(1, end).toLowerCase();
+  }
+  const colon = trimmed.indexOf(":");
+  const hostname = colon === -1 ? trimmed : trimmed.slice(0, colon);
+  return hostname.toLowerCase();
+}
+
+function isAllowedOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    return url.hostname === "127.0.0.1" || url.hostname === "localhost";
+  } catch {
+    return false;
+  }
+}
+
+function firstHeaderValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 app.use((req: Request, res: Response, next: NextFunction) => {
-  const host = req.headers.host || "";
-  if (!host.startsWith("127.0.0.1") && !host.startsWith("localhost")) {
-    res.status(403).json({ error: { code: "E_FORBIDDEN", message: "Akses hanya diizinkan melalui loopback 127.0.0.1" } });
+  // Host harus persis loopback (bukan prefix, jadi 127.0.0.1.evil.com ditolak).
+  const hostname = hostnameFromHostHeader(req.headers.host);
+  if (hostname !== "127.0.0.1" && hostname !== "localhost") {
+    sendJsonError(res, 403, "E_FORBIDDEN", "Akses hanya diizinkan melalui loopback 127.0.0.1");
     return;
   }
 
-  // Mutating request check
-  if (["POST", "PATCH", "PUT", "DELETE"].includes(req.method) && req.path.startsWith("/api/")) {
-    const appHeader = req.headers["x-app-request"];
-    if (appHeader !== "1") {
-      res.status(403).json({ error: { code: "E_FORBIDDEN", message: "Header X-App-Request: 1 wajib disertakan" } });
+  const method = req.method.toUpperCase();
+  const isMutating = ["POST", "PATCH", "PUT", "DELETE"].includes(method);
+  const isApiPath = req.path === "/api" || req.path.startsWith("/api/");
+
+  if (isMutating && isApiPath) {
+    if (firstHeaderValue(req.headers["x-app-request"]) !== "1") {
+      sendJsonError(res, 403, "E_FORBIDDEN", "Header X-App-Request: 1 wajib disertakan");
+      return;
+    }
+
+    const origin = firstHeaderValue(req.headers.origin);
+    if (origin !== undefined && !isAllowedOrigin(origin)) {
+      sendJsonError(res, 403, "E_FORBIDDEN", "Origin tidak diizinkan");
+      return;
+    }
+
+    const secFetchSite = firstHeaderValue(req.headers["sec-fetch-site"]);
+    if (secFetchSite !== undefined && secFetchSite !== "same-origin" && secFetchSite !== "none") {
+      sendJsonError(res, 403, "E_FORBIDDEN", "Permintaan lintas situs tidak diizinkan");
       return;
     }
   }
@@ -40,8 +101,19 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
+app.use(express.json());
+app.use(express.static(path.join(ROOT_DIR, "public")));
+
 // State in-memory
-const activeJobs = new Map<string, { job: Job; engine: RenderEngine }>();
+interface ActiveJob {
+  job: Job;
+  engine: RenderEngine;
+  cancelPromise?: Promise<void>;
+}
+
+const activeJobs = new Map<string, ActiveJob>();
+// Reservasi slug selama perencanaan agar dua POST render tidak lolos bersamaan.
+const pendingRenders = new Set<string>();
 const sseClients = new Map<string, Set<Response>>();
 
 function broadcastSSE(slug: string, event: string, data: unknown) {
@@ -49,7 +121,21 @@ function broadcastSSE(slug: string, event: string, data: unknown) {
   if (!clients) return;
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const client of clients) {
-    client.write(payload);
+    if (client.writableEnded || client.destroyed) {
+      clients.delete(client);
+      continue;
+    }
+    try {
+      client.write(payload);
+    } catch (err) {
+      clients.delete(client);
+      try {
+        client.end();
+      } catch {
+        // ignore
+      }
+      console.error(`Gagal mengirim event SSE "${event}" untuk ${slug}:`, err);
+    }
   }
 }
 
@@ -79,6 +165,112 @@ function loadRegistry(slug: string): AssetsRegistry {
     return AssetsRegistrySchema.parse(JSON.parse(fs.readFileSync(assetsPath, "utf-8")));
   }
   return { schemaVersion: 1, specHash: "init", assets: { hook: {}, body: {}, cta: {} } };
+}
+
+// Tulis JSON secara atomik: tmp file di direktori yang sama lalu rename.
+function writeJsonAtomic(targetPath: string, data: unknown): void {
+  const dir = path.dirname(targetPath);
+  fs.mkdirSync(dir, { recursive: true });
+  const tmpPath = path.join(
+    dir,
+    `.${path.basename(targetPath)}.${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`
+  );
+  try {
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+    fs.renameSync(tmpPath, targetPath);
+  } catch (err) {
+    try {
+      fs.rmSync(tmpPath, { force: true });
+    } catch {
+      // ignore
+    }
+    throw err;
+  }
+}
+
+function resolveExistingProduct(rawSlug: string, res: Response): ProductConfig | null {
+  if (!ProductSlugRegex.test(rawSlug)) {
+    sendJsonError(res, 400, "E_PATH_INVALID", "Slug produk tidak valid");
+    return null;
+  }
+  try {
+    return loadProduct(rawSlug);
+  } catch {
+    sendJsonError(res, 404, "E_NOT_FOUND", `Produk tidak ditemukan: ${rawSlug}`);
+    return null;
+  }
+}
+
+// --- Background render runner (R1.1) ---
+// Guard tambahan: jangan sampai request cancel menggantung jika cancelAndWait tidak menepati timeout.
+async function waitForCancel(cancelAndWait: (timeoutMs?: number) => Promise<void>, timeoutMs: number): Promise<void> {
+  const promise = cancelAndWait(timeoutMs);
+  // Cegah unhandled rejection jika guard yang menang balapan.
+  void promise.catch(() => {});
+  let timer: NodeJS.Timeout | undefined;
+  const guard = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs + 1000);
+    timer.unref();
+  });
+  try {
+    await Promise.race([promise, guard]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+// Semua error ditangkap di sini supaya kegagalan background tidak mematikan server.
+async function runJob(slug: string, handle: ActiveJob, product: ProductConfig, plan: PlanResult, manifest: Manifest): Promise<void> {
+  const { job, engine } = handle;
+
+  try {
+    await engine.renderQueue(ROOT_DIR, product, plan.queue, manifest, job, {
+      onItemDone: (filename, item, done, total) => {
+        if (job.cancelled) return;
+        broadcastSSE(slug, "item", { filename, item, done, total });
+      },
+      onItemFailed: (filename, error, done, total) => {
+        if (job.cancelled) return;
+        broadcastSSE(slug, "error", { filename, error, done, total });
+      },
+      onProgress: (done, total, current) => {
+        if (job.cancelled) return;
+        broadcastSSE(slug, "progress", { done, total, failed: job.failed, current });
+      },
+    });
+
+    if (job.cancelled) {
+      // Event `cancelled` dikirim oleh endpoint cancel, bukan di sini.
+      job.status = "CANCELLED";
+      job.current = null;
+      if (!job.completedAt) job.completedAt = new Date().toISOString();
+    } else {
+      // Jangan menimpa status FAILED dari engine: kalau semua item gagal,
+      // job harus tetap FAILED, bukan sukses palsu.
+      job.status = job.failed > 0 && job.done === 0 ? "FAILED" : "DONE";
+      job.current = null;
+      job.completedAt = new Date().toISOString();
+      broadcastSSE(slug, "done", { status: job.status, job });
+    }
+  } catch (err) {
+    if (!job.completedAt) job.completedAt = new Date().toISOString();
+    if (job.cancelled) {
+      job.status = "CANCELLED";
+      job.current = null;
+    } else {
+      const message = err instanceof Error ? err.message : String(err);
+      job.status = "FAILED";
+      job.current = null;
+      console.error(`[render] Job ${job.jobId} (${slug}) gagal:`, err);
+      broadcastSSE(slug, "error", { code: "E_RENDER_FAILED", message, job });
+      broadcastSSE(slug, "done", { status: "FAILED", job });
+    }
+  } finally {
+    // Hanya hapus jika handle ini masih yang terdaftar (job baru tidak boleh terhapus).
+    if (activeJobs.get(slug) === handle) {
+      activeJobs.delete(slug);
+    }
+  }
 }
 
 // --- Endpoints ---
@@ -143,7 +335,7 @@ app.post("/api/products", (req, res) => {
     fs.mkdirSync(path.join(paths.databaseDir, "ctas"), { recursive: true });
     fs.mkdirSync(paths.outputDir, { recursive: true });
 
-    fs.writeFileSync(paths.configPath, JSON.stringify(parsed, null, 2), "utf-8");
+    writeJsonAtomic(paths.configPath, parsed);
     res.status(201).json({ product: parsed });
   } catch (err) {
     res.status(400).json({ error: { code: "E_VALIDATION_ERROR", message: (err as Error).message } });
@@ -152,65 +344,113 @@ app.post("/api/products", (req, res) => {
 
 // GET /api/products/:slug
 app.get("/api/products/:slug", (req, res) => {
+  const product = resolveExistingProduct(req.params.slug, res);
+  if (!product) return;
   try {
-    const product = loadProduct(req.params.slug);
-    const registry = loadRegistry(req.params.slug);
+    const registry = loadRegistry(product.slug);
     res.json({ product, registry });
   } catch (err) {
-    res.status(404).json({ error: { code: "E_NOT_FOUND", message: (err as Error).message } });
+    sendJsonError(res, 500, "E_READ_FAILED", (err as Error).message);
   }
 });
 
 // POST /api/products/:slug/scan
 app.post("/api/products/:slug/scan", async (req, res) => {
+  const product = resolveExistingProduct(req.params.slug, res);
+  if (!product) return;
   try {
-    const product = loadProduct(req.params.slug);
-    let registry = loadRegistry(req.params.slug);
-    const { assetsPath } = getProductPaths(req.params.slug);
-
-    registry = await ScanEngine.scanProductAssets(ROOT_DIR, product, registry);
-    fs.writeFileSync(assetsPath, JSON.stringify(registry, null, 2), "utf-8");
-
+    const registry = await ScanEngine.scanProductAssets(ROOT_DIR, product, loadRegistry(product.slug));
+    writeJsonAtomic(getProductPaths(product.slug).assetsPath, registry);
     res.json({ ok: true, registry });
   } catch (err) {
-    res.status(500).json({ error: { code: "E_SCAN_FAILED", message: (err as Error).message } });
+    sendJsonError(res, 500, "E_SCAN_FAILED", (err as Error).message);
   }
 });
 
 // GET /api/products/:slug/plan
 app.get("/api/products/:slug/plan", async (req, res) => {
-  try {
-    const product = loadProduct(req.params.slug);
-    const registry = loadRegistry(req.params.slug);
-    const { outputDir } = getProductPaths(req.params.slug);
-    const manifest = ManifestManager.loadManifest(outputDir, product);
-    const scope = (req.query.scope as JobScope) || "new";
+  const scopeResult = JobScopeSchema.safeParse(req.query.scope ?? "new");
+  if (!scopeResult.success) {
+    sendJsonError(res, 400, "E_VALIDATION_ERROR", "Nilai scope tidak valid (new|stale|all|subset)");
+    return;
+  }
 
-    const plan = await PlanEngine.createPlan(ROOT_DIR, product, registry, manifest, scope);
+  const product = resolveExistingProduct(req.params.slug, res);
+  if (!product) return;
+
+  if (activeJobs.has(product.slug) || pendingRenders.has(product.slug)) {
+    sendJsonError(res, 409, "E_JOB_RUNNING", "Proses render sedang berlangsung untuk produk ini");
+    return;
+  }
+
+  try {
+    const registry = loadRegistry(product.slug);
+    const { outputDir } = getProductPaths(product.slug);
+    const manifest = ManifestManager.loadManifest(outputDir, product);
+    const plan = await PlanEngine.createPlan(ROOT_DIR, product, registry, manifest, scopeResult.data);
     res.json({ plan });
   } catch (err) {
-    res.status(500).json({ error: { code: "E_PLAN_FAILED", message: (err as Error).message } });
+    sendJsonError(res, 500, "E_PLAN_FAILED", (err as Error).message);
   }
 });
 
 // POST /api/products/:slug/render
 app.post("/api/products/:slug/render", async (req, res) => {
-  const slug = req.params.slug;
-  if (activeJobs.has(slug)) {
-    res.status(409).json({ error: { code: "E_JOB_RUNNING", message: "Proses render sedang berlangsung untuk produk ini" } });
+  const scopeResult = JobScopeSchema.safeParse(req.body?.scope ?? "new");
+  if (!scopeResult.success) {
+    sendJsonError(res, 400, "E_VALIDATION_ERROR", "Nilai scope tidak valid (new|stale|all|subset)");
     return;
   }
 
+  const product = resolveExistingProduct(req.params.slug, res);
+  if (!product) return;
+
+  const slug = product.slug;
+  if (activeJobs.has(slug) || pendingRenders.has(slug)) {
+    sendJsonError(res, 409, "E_JOB_RUNNING", "Proses render sedang berlangsung untuk produk ini");
+    return;
+  }
+
+  pendingRenders.add(slug);
   try {
-    const product = loadProduct(slug);
     const registry = loadRegistry(slug);
     const { outputDir } = getProductPaths(slug);
     const manifest = ManifestManager.loadManifest(outputDir, product);
-    const scope = (req.body.scope as JobScope) || "new";
+    const plan = await PlanEngine.createPlan(ROOT_DIR, product, registry, manifest, scopeResult.data);
 
-    const plan = await PlanEngine.createPlan(ROOT_DIR, product, registry, manifest, scope);
+    if (plan.blockers.length > 0) {
+      sendJsonError(
+        res,
+        422,
+        "E_LIMIT_EXCEEDED",
+        "Rencana render melebihi batas aman. Kurangi kombinasi sebelum render.",
+        plan.blockers
+      );
+      return;
+    }
+
     if (plan.counts.queued === 0) {
-      res.status(422).json({ error: { code: "E_NO_ITEMS", message: "Tidak ada video baru dalam antrean render" } });
+      sendJsonError(res, 422, "E_NO_ITEMS", "Tidak ada video baru dalam antrean render");
+      return;
+    }
+
+    // Setelah upgrade nama cache ingest (specHash), cache lama belum punya file
+    // kanonik baru. Jangan menulis FAILED per item; minta scan ulang sekali.
+    const missingNormalizedCache = plan.queue.some((combo) =>
+      [combo.hookItem, combo.bodyItem, combo.ctaItem].some(
+        (item) =>
+          !fs.existsSync(
+            IngestEngine.getNormalizedCachePath(ROOT_DIR, product, item.sha256, item.slug)
+          )
+      )
+    );
+    if (missingNormalizedCache) {
+      sendJsonError(
+        res,
+        422,
+        "E_SCAN_REQUIRED",
+        "Cache normalisasi untuk spesifikasi terbaru belum siap. Jalankan Pindai Ulang sekali, lalu render lagi."
+      );
       return;
     }
 
@@ -218,7 +458,7 @@ app.post("/api/products/:slug/render", async (req, res) => {
       jobId: `job_${Date.now()}`,
       product: slug,
       status: "RUNNING",
-      scope,
+      scope: scopeResult.data,
       total: plan.counts.queued,
       done: 0,
       failed: 0,
@@ -231,54 +471,73 @@ app.post("/api/products/:slug/render", async (req, res) => {
     };
 
     const engine = new RenderEngine();
-    activeJobs.set(slug, { job, engine });
+    const handle: ActiveJob = { job, engine };
+    activeJobs.set(slug, handle);
 
-    // Background execution
-    (async () => {
-      try {
-        await engine.renderQueue(ROOT_DIR, product, plan.queue, manifest, job, {
-          onItemDone: (filename, item, done, total) => {
-            broadcastSSE(slug, "item", { filename, item, done, total });
-          },
-          onItemFailed: (filename, error, done, total) => {
-            broadcastSSE(slug, "error", { filename, error, done, total });
-          },
-          onProgress: (done, total, current) => {
-            broadcastSSE(slug, "progress", { done, total, current });
-          },
-        });
-      } finally {
-        activeJobs.delete(slug);
-        broadcastSSE(slug, "done", { job });
-      }
-    })();
+    // Mulai setelah response 202 terkirim, agar kegagalan awal engine
+    // (mis. mkdir gagal) tidak mendahului response dan tidak mematikan server.
+    setImmediate(() => {
+      void runJob(slug, handle, product, plan, manifest).catch((err) => {
+        console.error(`[render] Kegagalan tak terduga pada job ${job.jobId} (${slug}):`, err);
+      });
+    });
 
     res.status(202).json({ job });
   } catch (err) {
-    res.status(500).json({ error: { code: "E_RENDER_ERROR", message: (err as Error).message } });
+    sendJsonError(res, 500, "E_RENDER_ERROR", (err as Error).message);
+  } finally {
+    pendingRenders.delete(slug);
   }
 });
 
 // POST /api/products/:slug/render/cancel
-app.post("/api/products/:slug/render/cancel", (req, res) => {
-  const active = activeJobs.get(req.params.slug);
-  if (!active) {
-    res.status(404).json({ error: { code: "E_NOT_FOUND", message: "Tidak ada proses render yang sedang aktif" } });
+app.post("/api/products/:slug/render/cancel", async (req, res) => {
+  const slug = getProductPaths(req.params.slug).slug;
+  const handle = activeJobs.get(slug);
+  if (!handle) {
+    sendJsonError(res, 404, "E_NOT_FOUND", "Tidak ada proses render yang sedang aktif");
     return;
   }
 
-  active.engine.cancel();
-  active.job.status = "CANCELLED";
-  active.job.cancelled = true;
-  activeJobs.delete(req.params.slug);
-  broadcastSSE(req.params.slug, "cancelled", { job: active.job });
+  // Tandai batal dulu agar callback/runJob tidak lagi mengirim event progres maupun `done`.
+  handle.job.cancelled = true;
 
-  res.status(202).json({ ok: true, job: active.job });
+  if (!handle.cancelPromise) {
+    handle.cancelPromise = (async () => {
+      const engine = handle.engine as RenderEngine & { cancelAndWait?: (timeoutMs?: number) => Promise<void> };
+      try {
+        if (typeof engine.cancelAndWait === "function") {
+          // Preflight ffprobe punya timeout internal sampai 30 detik; jangan lepas lock lebih awal.
+          await waitForCancel(engine.cancelAndWait.bind(engine), 30000);
+        } else {
+          engine.cancel();
+        }
+      } catch (err) {
+        console.error(`[render] cancelAndWait untuk ${slug} gagal/timeout:`, err);
+      }
+
+      handle.job.status = "CANCELLED";
+      handle.job.current = null;
+      if (!handle.job.completedAt) handle.job.completedAt = new Date().toISOString();
+
+      if (activeJobs.get(slug) === handle) {
+        activeJobs.delete(slug);
+      }
+
+      // Hanya event `cancelled`; tidak ada `done` untuk job yang dibatalkan.
+      broadcastSSE(slug, "cancelled", { job: handle.job });
+    })();
+  }
+
+  // Permintaan cancel ganda menunggu promise yang sama (tanpa event ganda).
+  await handle.cancelPromise;
+
+  res.status(202).json({ ok: true, job: handle.job });
 });
 
 // GET /api/products/:slug/job
 app.get("/api/products/:slug/job", (req, res) => {
-  const active = activeJobs.get(req.params.slug);
+  const active = activeJobs.get(getProductPaths(req.params.slug).slug);
   if (active) {
     res.json({ job: active.job });
   } else {
@@ -288,7 +547,7 @@ app.get("/api/products/:slug/job", (req, res) => {
 
 // GET /api/products/:slug/events (SSE)
 app.get("/api/products/:slug/events", (req, res) => {
-  const slug = req.params.slug;
+  const slug = getProductPaths(req.params.slug).slug;
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
@@ -301,11 +560,26 @@ app.get("/api/products/:slug/events", (req, res) => {
 
   // Send initial snapshot
   const active = activeJobs.get(slug);
-  res.write(`event: snapshot\ndata: ${JSON.stringify({ job: active?.job || null })}\n\n`);
+  try {
+    res.write(`event: snapshot\ndata: ${JSON.stringify({ job: active?.job || null })}\n\n`);
+  } catch (err) {
+    console.error(`Gagal mengirim snapshot SSE untuk ${slug}:`, err);
+  }
 
   // Heartbeat every 15s
   const heartbeat = setInterval(() => {
-    res.write(`event: heartbeat\ndata: {}\n\n`);
+    if (res.writableEnded || res.destroyed) {
+      clearInterval(heartbeat);
+      sseClients.get(slug)?.delete(res);
+      return;
+    }
+    try {
+      res.write(`event: heartbeat\ndata: {}\n\n`);
+    } catch (err) {
+      clearInterval(heartbeat);
+      sseClients.get(slug)?.delete(res);
+      console.error(`Gagal mengirim heartbeat SSE untuk ${slug}:`, err);
+    }
   }, 15000);
 
   req.on("close", () => {
@@ -316,70 +590,381 @@ app.get("/api/products/:slug/events", (req, res) => {
 
 // GET /api/products/:slug/report.csv
 app.get("/api/products/:slug/report.csv", (req, res) => {
+  const product = resolveExistingProduct(req.params.slug, res);
+  if (!product) return;
   try {
-    const product = loadProduct(req.params.slug);
-    const { outputDir } = getProductPaths(req.params.slug);
+    const { outputDir } = getProductPaths(product.slug);
     const manifest = ManifestManager.loadManifest(outputDir, product);
     const csvContent = ReportGenerator.generateCsv(manifest, product);
 
+    // Nama file untuk header hanya boleh berisi slug yang sudah tervalidasi.
+    const safeName = product.slug.replace(/[^a-z0-9-]/g, "");
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="report_${req.params.slug}.csv"`);
+    res.setHeader("Content-Disposition", `attachment; filename="report_${safeName}.csv"`);
     res.send(csvContent);
   } catch (err) {
-    res.status(500).json({ error: { code: "E_REPORT_FAILED", message: (err as Error).message } });
+    sendJsonError(res, 500, "E_REPORT_FAILED", (err as Error).message);
   }
 });
+
+// --- Folder reveal endpoints (F1.x) ---
+
+const FOLDER_OPEN_DEDUPE_MS = 1000;
+const FOLDER_OPEN_TIMEOUT_MS = 2000;
+const lastFolderOpen = new Map<string, number>();
+
+function pruneFolderOpenLog(now: number): void {
+  for (const [key, timestamp] of lastFolderOpen) {
+    if (now - timestamp > 60_000) {
+      lastFolderOpen.delete(key);
+    }
+  }
+}
+
+// Resolve saat Explorer benar-benar berhasil di-spawn (bukan berdasarkan exit code).
+function safeOpenFolder(targetDir: string): Promise<number> {
+  return new Promise<number>((resolve, reject) => {
+    const winPath = path.resolve(targetDir).replace(/\//g, "\\");
+    let settled = false;
+    let timer: NodeJS.Timeout | undefined;
+
+    const child = spawn("explorer.exe", [winPath], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: false,
+    });
+
+    const settle = (err?: Error | null) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      if (err) {
+        try {
+          child.kill();
+        } catch {
+          // ignore
+        }
+        reject(err);
+        return;
+      }
+      child.unref();
+      resolve(child.pid ?? 0);
+    };
+
+    timer = setTimeout(() => {
+      settle(new Error(`Timeout ${FOLDER_OPEN_TIMEOUT_MS} ms saat membuka File Explorer`));
+    }, FOLDER_OPEN_TIMEOUT_MS);
+
+    child.once("spawn", () => settle(null));
+    child.once("error", (err) => {
+      settle(err instanceof Error ? err : new Error(String(err)));
+    });
+  });
+}
+
+async function openExistingFolder(res: Response, targetDir: string): Promise<void> {
+  const resolved = path.resolve(targetDir);
+
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(resolved);
+  } catch {
+    sendJsonError(res, 404, "E_PATH_INVALID", "Folder tidak ditemukan");
+    return;
+  }
+  if (!stat.isDirectory()) {
+    sendJsonError(res, 404, "E_PATH_INVALID", "Path bukan folder");
+    return;
+  }
+
+  const now = Date.now();
+  pruneFolderOpenLog(now);
+  const last = lastFolderOpen.get(resolved);
+  if (last !== undefined && now - last < FOLDER_OPEN_DEDUPE_MS) {
+    res.json({ ok: true, path: resolved, deduped: true });
+    return;
+  }
+  lastFolderOpen.set(resolved, now);
+
+  try {
+    const pid = await safeOpenFolder(resolved);
+    res.json({ ok: true, path: resolved, pid });
+  } catch (err) {
+    // Izinkan percobaan ulang segera setelah gagal.
+    lastFolderOpen.delete(resolved);
+    console.error(`[open-folder] Gagal membuka folder "${resolved}":`, err);
+    sendJsonError(res, 500, "E_OPEN_FAILED", `Gagal membuka folder: ${(err as Error).message}`);
+  }
+}
 
 // POST /api/products/:slug/open-output
-app.post("/api/products/:slug/open-output", (req, res) => {
-  const { outputDir } = getProductPaths(req.params.slug);
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-  }
-  execFile("explorer.exe", [outputDir], { windowsHide: true });
-  res.status(204).end();
+app.post("/api/products/:slug/open-output", async (req, res) => {
+  const product = resolveExistingProduct(req.params.slug, res);
+  if (!product) return;
+  const { outputDir } = getProductPaths(product.slug);
+  await openExistingFolder(res, outputDir);
 });
 
-// Media Range Streaming (FR-8)
-app.get("/api/products/:slug/media/:kind/:file", (req, res) => {
-  const { slug, kind, file } = req.params;
-  const folderNames: Record<string, string> = { hook: "hooks", body: "bodies", cta: "ctas" };
-  const folder = folderNames[kind || ""];
-  if (!folder) {
-    res.status(400).end();
-    return;
-  }
+// POST /api/products/:slug/open-database
+app.post("/api/products/:slug/open-database", async (req, res) => {
+  const product = resolveExistingProduct(req.params.slug, res);
+  if (!product) return;
 
-  const filePath = path.join(ROOT_DIR, "database", slug, folder, file);
-  if (!fs.existsSync(filePath)) {
-    res.status(404).end();
-    return;
-  }
-
-  const stat = fs.statSync(filePath);
-  const fileSize = stat.size;
-  const range = req.headers.range;
-
-  if (range) {
-    const parts = range.replace(/bytes=/, "").split("-");
-    const start = parseInt(parts[0] || "0", 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-    const chunksize = end - start + 1;
-    const stream = fs.createReadStream(filePath, { start, end });
-    res.writeHead(206, {
-      "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-      "Accept-Ranges": "bytes",
-      "Content-Length": chunksize,
-      "Content-Type": "video/mp4",
-    });
-    stream.pipe(res);
+  const rawKind = req.query.kind;
+  let kind: string | undefined;
+  if (rawKind === undefined) {
+    kind = undefined;
+  } else if (typeof rawKind === "string") {
+    const trimmed = rawKind.trim();
+    kind = trimmed === "" ? undefined : trimmed;
   } else {
-    res.writeHead(200, {
-      "Content-Length": fileSize,
-      "Content-Type": "video/mp4",
-    });
-    fs.createReadStream(filePath).pipe(res);
+    sendJsonError(res, 400, "E_VALIDATION_ERROR", "Parameter kind tidak valid");
+    return;
   }
+
+  if (kind !== undefined && !["hooks", "bodies", "ctas"].includes(kind)) {
+    sendJsonError(res, 400, "E_VALIDATION_ERROR", "Nilai kind harus hooks, bodies, atau ctas");
+    return;
+  }
+
+  const { databaseDir } = getProductPaths(product.slug);
+  const targetDir = kind ? path.join(databaseDir, kind) : databaseDir;
+  await openExistingFolder(res, targetDir);
+});
+
+// --- Media Range Streaming (FR-8) ---
+
+const MEDIA_FOLDERS: Record<string, string> = { hook: "hooks", body: "bodies", cta: "ctas" };
+
+// Mengembalikan null jika header Range tidak valid / tidak bisa dipenuhi (-> 416).
+function parseRangeHeader(rangeHeader: string, fileSize: number): { start: number; end: number } | null {
+  const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+  if (!match) return null;
+  const rawStart = match[1];
+  const rawEnd = match[2];
+  if (!rawStart && !rawEnd) return null;
+  if (fileSize <= 0) return null;
+
+  if (!rawStart) {
+    // Suffix range: bytes=-N (N byte terakhir)
+    const suffixLength = Number(rawEnd);
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return null;
+    return { start: Math.max(0, fileSize - suffixLength), end: fileSize - 1 };
+  }
+
+  const start = Number(rawStart);
+  if (!Number.isSafeInteger(start) || start >= fileSize) return null;
+
+  let end: number;
+  if (!rawEnd) {
+    end = fileSize - 1;
+  } else {
+    end = Number(rawEnd);
+    if (!Number.isSafeInteger(end) || end < start) return null;
+  }
+  if (end >= fileSize) end = fileSize - 1;
+
+  return { start, end };
+}
+
+function streamFileToResponse(
+  res: Response,
+  filePath: string,
+  status: number,
+  headers: Record<string, string | number>,
+  range?: { start: number; end: number }
+): void {
+  res.writeHead(status, headers);
+  const stream = range ? fs.createReadStream(filePath, range) : fs.createReadStream(filePath);
+  let completed = false;
+
+  stream.on("error", (err) => {
+    completed = true;
+    console.error(`Gagal membaca file media "${filePath}":`, err);
+    if (!res.headersSent) {
+      sendJsonError(res, 500, "E_MEDIA_READ_FAILED", "Gagal membaca file media");
+    } else if (!res.writableEnded) {
+      res.destroy();
+    }
+  });
+
+  stream.on("end", () => {
+    completed = true;
+  });
+
+  // Jangan biarkan stream menggantung saat klien memutus koneksi.
+  res.on("close", () => {
+    if (!completed) stream.destroy();
+  });
+
+  stream.pipe(res);
+}
+
+app.get("/api/products/:slug/media/:kind/:file", (req, res) => {
+  const rawSlug = req.params.slug;
+  const kind = req.params.kind;
+  const rawFile = req.params.file;
+
+  if (!ProductSlugRegex.test(rawSlug)) {
+    sendJsonError(res, 400, "E_PATH_INVALID", "Slug produk tidak valid");
+    return;
+  }
+
+  let product: ProductConfig;
+  try {
+    product = loadProduct(rawSlug);
+  } catch {
+    sendJsonError(res, 404, "E_NOT_FOUND", `Produk tidak ditemukan: ${rawSlug}`);
+    return;
+  }
+
+  const folder = MEDIA_FOLDERS[kind];
+  if (!folder) {
+    sendJsonError(res, 400, "E_PATH_INVALID", "Jenis media tidak valid");
+    return;
+  }
+
+  if (
+    !rawFile ||
+    rawFile === "." ||
+    rawFile === ".." ||
+    rawFile.includes("/") ||
+    rawFile.includes("\\") ||
+    rawFile.includes("\0") ||
+    path.basename(rawFile) !== rawFile
+  ) {
+    sendJsonError(res, 400, "E_PATH_INVALID", "Nama file tidak valid");
+    return;
+  }
+
+  const folderDir = path.resolve(ROOT_DIR, "database", product.slug, folder);
+  const candidate = path.resolve(folderDir, rawFile);
+  if (!candidate.startsWith(folderDir + path.sep)) {
+    sendJsonError(res, 400, "E_PATH_INVALID", "Path file tidak valid");
+    return;
+  }
+
+  // Lindungi dari symlink/junction yang keluar dari folder media.
+  let realFolder: string;
+  let realFile: string;
+  try {
+    realFolder = fs.realpathSync(folderDir);
+    realFile = fs.realpathSync(candidate);
+  } catch {
+    sendJsonError(res, 404, "E_NOT_FOUND", "File media tidak ditemukan");
+    return;
+  }
+  if (!realFile.startsWith(realFolder + path.sep)) {
+    sendJsonError(res, 400, "E_PATH_INVALID", "Path file tidak valid");
+    return;
+  }
+
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(realFile);
+  } catch {
+    sendJsonError(res, 404, "E_NOT_FOUND", "File media tidak ditemukan");
+    return;
+  }
+  if (!stat.isFile()) {
+    sendJsonError(res, 404, "E_NOT_FOUND", "File media tidak ditemukan");
+    return;
+  }
+
+  const fileSize = stat.size;
+  const contentType = "video/mp4";
+  const rangeHeader = req.headers.range;
+
+  if (typeof rangeHeader === "string" && rangeHeader !== "") {
+    const parsedRange = parseRangeHeader(rangeHeader, fileSize);
+    if (!parsedRange) {
+      res.setHeader("Content-Range", `bytes */${fileSize}`);
+      res.setHeader("Accept-Ranges", "bytes");
+      sendJsonError(res, 416, "E_RANGE_INVALID", "Rentang byte tidak valid");
+      return;
+    }
+
+    const { start, end } = parsedRange;
+    streamFileToResponse(
+      res,
+      realFile,
+      206,
+      {
+        "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+        "Accept-Ranges": "bytes",
+        "Content-Length": end - start + 1,
+        "Content-Type": contentType,
+      },
+      { start, end }
+    );
+    return;
+  }
+
+  streamFileToResponse(res, realFile, 200, {
+    "Content-Length": fileSize,
+    "Accept-Ranges": "bytes",
+    "Content-Type": contentType,
+  });
+});
+
+// --- Fallback 404 JSON untuk /api/* ---
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.path === "/api" || req.path.startsWith("/api/")) {
+    sendJsonError(res, 404, "E_NOT_FOUND", `Endpoint tidak ditemukan: ${req.method} ${req.path}`);
+    return;
+  }
+  next();
+});
+
+// --- Error middleware JSON ---
+app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
+
+  let status = 500;
+  let code = "E_INTERNAL";
+  let message = "Terjadi kesalahan internal pada server";
+
+  if (err && typeof err === "object") {
+    const anyErr = err as { type?: unknown; status?: unknown; statusCode?: unknown; code?: unknown; message?: unknown };
+    const errType = typeof anyErr.type === "string" ? anyErr.type : undefined;
+
+    if (errType === "entity.parse.failed") {
+      status = 400;
+      code = "E_VALIDATION_ERROR";
+      message = "Body JSON tidak valid";
+    } else if (errType === "entity.too.large") {
+      status = 413;
+      code = "E_UPLOAD_TOO_LARGE";
+      message = "Ukuran body permintaan terlalu besar";
+    } else {
+      if (typeof anyErr.status === "number") status = anyErr.status;
+      else if (typeof anyErr.statusCode === "number") status = anyErr.statusCode;
+
+      if (typeof anyErr.code === "string" && /^E_[A-Z0-9_]+$/.test(anyErr.code)) {
+        code = anyErr.code;
+      } else if (status === 400) {
+        code = "E_VALIDATION_ERROR";
+      } else if (status === 404) {
+        code = "E_NOT_FOUND";
+      } else if (status === 403) {
+        code = "E_FORBIDDEN";
+      }
+
+      if (typeof anyErr.message === "string" && anyErr.message) message = anyErr.message;
+    }
+  }
+
+  // Log ringkas untuk error 4xx (mis. body JSON rusak), stack lengkap untuk 5xx.
+  if (status >= 500) {
+    console.error(`[server] Error pada ${req.method} ${req.originalUrl}:`, err);
+  } else {
+    console.warn(`[server] ${status} pada ${req.method} ${req.originalUrl}: ${message}`);
+  }
+
+  res.status(status).json({ error: { code, message } });
 });
 
 // Server Listen with Port Fallback (3210 -> 3219)

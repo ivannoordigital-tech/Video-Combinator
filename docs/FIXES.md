@@ -90,9 +90,22 @@ Dokumen ini merangkum perubahan besar pada branch `fix/audit-2026-11`. Fokus per
 | 413 | `E_UPLOAD_TOO_LARGE` | Body permintaan terlalu besar |
 | 416 | `E_RANGE_INVALID` | Header Range tidak valid atau di luar ukuran file |
 | 422 | `E_LIMIT_EXCEEDED`, `E_NO_ITEMS`, `E_SCAN_REQUIRED` | Kombinasi melebihi batas, tidak ada item baru, atau cache normalisasi belum siap |
+| 200 | `-` | `PATCH /api/products/:slug` (music) dan `PATCH /api/products/:slug/assets/:kind/:file` (enable/disable) berhasil |
 | 500 | `E_*` spesifik | Kegagalan server, scan, plan, render, report, atau buka folder |
 
 Semua error API memakai bentuk JSON yang sama: `{ "error": { "code": "...", "message": "...", "details": ... } }`.
+
+## 11. Backsound (Opsi A)
+
+- Folder baru: `database/<slug>/backsounds/` dengan format `.mp3`, `.wav`, `.m4a`, `.aac`, `.flac`.
+- Scan menormalisasi backsound ke AAC dengan sample rate/channel sesuai produk di `cache/<slug>/music/`.
+- Backsound bukan bagian dari cartesian product. Jumlah kombinasi tetap `hooks x bodies x ctas`.
+- Satu track dipilih per output: `rotate`, `hash`, atau `fixed` (di `product.json` bagian `music`).
+- Render memakai dua pass: concat video/audio dengan stream-copy, lalu mix backsound dengan `-c:v copy`. Video tidak di-encode ulang.
+- Volume default `0.12`, fade in/out 1 detik, loop aktif. Nilai dapat diubah dari panel Backsound.
+- Manifest mencatat `music`, `musicFingerprint`, dan `musicConfigHash`. Perubahan track/konfigurasi membuat output lama `STALE`.
+- API baru: `PATCH /api/products/:slug` untuk konfigurasi music dan `PATCH /api/products/:slug/assets/:kind/:file` untuk enable/disable aset.
+- Media audio dapat diputar lewat `GET /api/products/:slug/media/music/:file` dengan Content-Type sesuai ekstensi.
 
 ## Verifikasi manual singkat
 

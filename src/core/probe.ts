@@ -65,6 +65,17 @@ export function parseFrameRate(rate: unknown): number {
 
 export class VideoProbe {
   public static async probeFile(filePath: string): Promise<ProbeResult> {
+    return this.runProbe(filePath, true);
+  }
+
+  /**
+   * Probe file audio-only (backsound). Tidak mewajibkan stream video.
+   */
+  public static async probeAudioFile(filePath: string): Promise<ProbeResult> {
+    return this.runProbe(filePath, false);
+  }
+
+  private static async runProbe(filePath: string, requireVideo: boolean): Promise<ProbeResult> {
     try {
       const { stdout } = await FFmpegResolver.executeFfprobe([
         "-v", "error",
@@ -84,13 +95,13 @@ export class VideoProbe {
         audioStream.sample_rate = Number(audioStream.sample_rate);
       }
 
-      if (!videoStream) {
+      if (!videoStream && requireVideo) {
         throw new AppError("E_NO_VIDEO_STREAM", `File tidak memiliki stream video: ${filePath}`);
       }
 
       // Hitung rotasi dari side_data_list
       let rotation = 0;
-      if (videoStream.side_data_list) {
+      if (videoStream?.side_data_list) {
         for (const side of videoStream.side_data_list) {
           if (typeof side.rotation === "number") {
             rotation = side.rotation;
@@ -100,15 +111,18 @@ export class VideoProbe {
       }
 
       // Hitung fps dari avg_frame_rate misal "30/1" (fallback r_frame_rate)
-      let fps = parseFrameRate(videoStream.avg_frame_rate);
-      if (fps === 0) {
-        fps = parseFrameRate(videoStream.r_frame_rate);
+      let fps = 0;
+      if (videoStream) {
+        fps = parseFrameRate(videoStream.avg_frame_rate);
+        if (fps === 0) {
+          fps = parseFrameRate(videoStream.r_frame_rate);
+        }
       }
 
       // Durasi: format container lebih akurat, lalu stream video/audio sebagai fallback.
       // Nilai non-finite (NaN/Infinity) diganti 0 agar perbandingan downstream aman.
       let durationCandidate = toFiniteNumber(format.duration);
-      if (durationCandidate === null) durationCandidate = toFiniteNumber(videoStream.duration);
+      if (durationCandidate === null) durationCandidate = toFiniteNumber(videoStream?.duration);
       if (durationCandidate === null) durationCandidate = toFiniteNumber(audioStream?.duration);
       const durationSeconds = durationCandidate !== null && durationCandidate > 0 ? durationCandidate : 0;
 

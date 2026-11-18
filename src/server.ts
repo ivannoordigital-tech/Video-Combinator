@@ -151,6 +151,13 @@ function getProductPaths(slug: string) {
   };
 }
 
+function ensureAssetFolders(product: ProductConfig): void {
+  const { databaseDir } = getProductPaths(product.slug);
+  for (const folder of ["hooks", "bodies", "ctas", "backsounds"]) {
+    fs.mkdirSync(path.join(databaseDir, folder), { recursive: true });
+  }
+}
+
 function loadProduct(slug: string): ProductConfig {
   const { configPath } = getProductPaths(slug);
   if (!fs.existsSync(configPath)) {
@@ -164,7 +171,7 @@ function loadRegistry(slug: string): AssetsRegistry {
   if (fs.existsSync(assetsPath)) {
     return AssetsRegistrySchema.parse(JSON.parse(fs.readFileSync(assetsPath, "utf-8")));
   }
-  return { schemaVersion: 1, specHash: "init", assets: { hook: {}, body: {}, cta: {} } };
+  return { schemaVersion: 1, specHash: "init", assets: { hook: {}, body: {}, cta: {}, music: {} } };
 }
 
 // Tulis JSON secara atomik: tmp file di direktori yang sama lalu rename.
@@ -306,10 +313,11 @@ app.get("/api/products", (req, res) => {
           hooks: Object.keys(reg.assets.hook).length,
           bodies: Object.keys(reg.assets.body).length,
           ctas: Object.keys(reg.assets.cta).length,
+          music: Object.keys(reg.assets.music).length,
         },
       };
     } catch {
-      return { slug, displayName: slug, counts: { hooks: 0, bodies: 0, ctas: 0 } };
+      return { slug, displayName: slug, counts: { hooks: 0, bodies: 0, ctas: 0, music: 0 } };
     }
   });
 
@@ -333,6 +341,7 @@ app.post("/api/products", (req, res) => {
     fs.mkdirSync(path.join(paths.databaseDir, "hooks"), { recursive: true });
     fs.mkdirSync(path.join(paths.databaseDir, "bodies"), { recursive: true });
     fs.mkdirSync(path.join(paths.databaseDir, "ctas"), { recursive: true });
+    fs.mkdirSync(path.join(paths.databaseDir, "backsounds"), { recursive: true });
     fs.mkdirSync(paths.outputDir, { recursive: true });
 
     writeJsonAtomic(paths.configPath, parsed);
@@ -347,10 +356,85 @@ app.get("/api/products/:slug", (req, res) => {
   const product = resolveExistingProduct(req.params.slug, res);
   if (!product) return;
   try {
+    ensureAssetFolders(product);
     const registry = loadRegistry(product.slug);
     res.json({ product, registry });
   } catch (err) {
     sendJsonError(res, 500, "E_READ_FAILED", (err as Error).message);
+  }
+});
+
+// PATCH /api/products/:slug - update konfigurasi backsound (dan field produk lain yang dikirim)
+app.patch("/api/products/:slug", (req, res) => {
+  const product = resolveExistingProduct(req.params.slug, res);
+  if (!product) return;
+
+  const slug = product.slug;
+  if (activeJobs.has(slug) || pendingRenders.has(slug)) {
+    sendJsonError(res, 409, "E_JOB_RUNNING", "Proses render sedang berlangsung untuk produk ini");
+    return;
+  }
+
+  try {
+    const body = req.body;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      sendJsonError(res, 400, "E_VALIDATION_ERROR", "Body harus berupa objek");
+      return;
+    }
+
+    // Hanya music yang boleh diubah lewat endpoint ini. Field lain diabaikan
+    // agar spec video/audio tidak berubah tanpa scan ulang.
+    const musicPatch = body.music;
+    if (!musicPatch || typeof musicPatch !== "object" || Array.isArray(musicPatch)) {
+      sendJsonError(res, 400, "E_VALIDATION_ERROR", "Field music wajib dikirim sebagai objek");
+      return;
+    }
+
+    const updated = ProductConfigSchema.parse({
+      ...product,
+      music: {
+        ...product.music,
+        ...musicPatch,
+      },
+    });
+
+    writeJsonAtomic(getProductPaths(slug).configPath, updated);
+    res.json({ product: updated });
+  } catch (err) {
+    sendJsonError(res, 400, "E_VALIDATION_ERROR", (err as Error).message);
+  }
+});
+
+// PATCH /api/products/:slug/assets/:kind/:file - enable/disable satu aset
+app.patch("/api/products/:slug/assets/:kind/:file", (req, res) => {
+  const product = resolveExistingProduct(req.params.slug, res);
+  if (!product) return;
+
+  const kind = req.params.kind;
+  if (!["hook", "body", "cta", "music"].includes(kind)) {
+    sendJsonError(res, 400, "E_VALIDATION_ERROR", "Jenis aset tidak valid");
+    return;
+  }
+
+  if (typeof req.body?.enabled !== "boolean") {
+    sendJsonError(res, 400, "E_VALIDATION_ERROR", "Field enabled harus boolean");
+    return;
+  }
+
+  try {
+    const registry = loadRegistry(product.slug);
+    const bucket = registry.assets[kind as "hook" | "body" | "cta" | "music"];
+    const item = bucket[req.params.file];
+    if (!item) {
+      sendJsonError(res, 404, "E_NOT_FOUND", "Aset tidak ditemukan");
+      return;
+    }
+
+    item.enabled = req.body.enabled;
+    writeJsonAtomic(getProductPaths(product.slug).assetsPath, registry);
+    res.json({ ok: true, file: req.params.file, item });
+  } catch (err) {
+    sendJsonError(res, 500, "E_WRITE_FAILED", (err as Error).message);
   }
 });
 
@@ -436,14 +520,26 @@ app.post("/api/products/:slug/render", async (req, res) => {
 
     // Setelah upgrade nama cache ingest (specHash), cache lama belum punya file
     // kanonik baru. Jangan menulis FAILED per item; minta scan ulang sekali.
-    const missingNormalizedCache = plan.queue.some((combo) =>
-      [combo.hookItem, combo.bodyItem, combo.ctaItem].some(
+    const missingNormalizedCache = plan.queue.some((combo) => {
+      const videoMissing = [combo.hookItem, combo.bodyItem, combo.ctaItem].some(
         (item) =>
           !fs.existsSync(
             IngestEngine.getNormalizedCachePath(ROOT_DIR, product, item.sha256, item.slug)
           )
-      )
-    );
+      );
+      const musicMissing =
+        combo.musicItem !== null &&
+        combo.musicItem !== undefined &&
+        !fs.existsSync(
+          IngestEngine.getMusicCachePath(
+            ROOT_DIR,
+            product,
+            combo.musicItem.sha256,
+            combo.musicItem.slug
+          )
+        );
+      return videoMissing || musicMissing;
+    });
     if (missingNormalizedCache) {
       sendJsonError(
         res,
@@ -722,8 +818,8 @@ app.post("/api/products/:slug/open-database", async (req, res) => {
     return;
   }
 
-  if (kind !== undefined && !["hooks", "bodies", "ctas"].includes(kind)) {
-    sendJsonError(res, 400, "E_VALIDATION_ERROR", "Nilai kind harus hooks, bodies, atau ctas");
+  if (kind !== undefined && !["hooks", "bodies", "ctas", "backsounds"].includes(kind)) {
+    sendJsonError(res, 400, "E_VALIDATION_ERROR", "Nilai kind harus hooks, bodies, ctas, atau backsounds");
     return;
   }
 
@@ -734,7 +830,12 @@ app.post("/api/products/:slug/open-database", async (req, res) => {
 
 // --- Media Range Streaming (FR-8) ---
 
-const MEDIA_FOLDERS: Record<string, string> = { hook: "hooks", body: "bodies", cta: "ctas" };
+const MEDIA_FOLDERS: Record<string, string> = {
+  hook: "hooks",
+  body: "bodies",
+  cta: "ctas",
+  music: "backsounds",
+};
 
 // Mengembalikan null jika header Range tidak valid / tidak bisa dipenuhi (-> 416).
 function parseRangeHeader(rangeHeader: string, fileSize: number): { start: number; end: number } | null {
@@ -872,7 +973,15 @@ app.get("/api/products/:slug/media/:kind/:file", (req, res) => {
   }
 
   const fileSize = stat.size;
-  const contentType = "video/mp4";
+  const ext = path.extname(realFile).toLowerCase();
+  const audioContentTypes: Record<string, string> = {
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".flac": "audio/flac",
+  };
+  const contentType = audioContentTypes[ext] ?? "video/mp4";
   const rangeHeader = req.headers.range;
 
   if (typeof rangeHeader === "string" && rangeHeader !== "") {

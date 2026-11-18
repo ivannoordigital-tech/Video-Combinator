@@ -51,6 +51,31 @@ export class IngestEngine {
   }
 
   /**
+   * Path cache backsound yang sudah dinormalisasi ke audio kanonik.
+   * cache/<product>/music/<sha8>__<specHash8>__<slug>.m4a
+   */
+  public static getMusicCachePath(
+    productRoot: string,
+    product: ProductConfig,
+    sha256: string,
+    slug: string
+  ): string {
+    const cacheDir = path.join(productRoot, "cache", product.slug);
+    const specHash = computeSpecHash(product.video, product.audio);
+    return this.normalizedMusicPath(cacheDir, sha256, slug, specHash);
+  }
+
+  public static normalizedMusicPath(
+    cacheDir: string,
+    sha256: string,
+    slug: string,
+    specHash: string
+  ): string {
+    const musicDir = path.join(cacheDir, "music");
+    return path.join(musicDir, `${sha256.slice(0, 8)}__${specHash.slice(0, 8)}__${slug}.m4a`);
+  }
+
+  /**
    * Nama lama tanpa specHash. Dipertahankan sebagai hardlink/copy agar
    * RenderEngine yang masih membaca pola lama tetap menemukan klip kanonik.
    */
@@ -208,6 +233,127 @@ export class IngestEngine {
     } catch (err) {
       if (fs.existsSync(partPath)) {
         fs.unlinkSync(partPath);
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Menormalisasi file backsound menjadi audio kanonik (AAC, sample rate dan
+   * channel sesuai produk). Video tidak disentuh karena backsound audio-only.
+   */
+  public static async ingestMusic(
+    inputPath: string,
+    slug: string,
+    product: ProductConfig,
+    cacheDir: string
+  ): Promise<AssetItem> {
+    if (!fs.existsSync(inputPath)) {
+      throw new AppError("E_INPUT_CORRUPT", `File backsound tidak ditemukan: ${inputPath}`);
+    }
+
+    const sourceStats = fs.statSync(inputPath);
+    const maxBytes = product.limits.maxAssetSizeMb * 1024 * 1024;
+    if (sourceStats.size > maxBytes) {
+      throw new AppError(
+        "E_INPUT_TOO_LONG",
+        `Ukuran backsound (${(sourceStats.size / 1024 / 1024).toFixed(1)} MB) melebihi batas ${product.limits.maxAssetSizeMb} MB: ${inputPath}`
+      );
+    }
+
+    const probe = await VideoProbe.probeAudioFile(inputPath);
+    if (!probe.audioStream) {
+      throw new AppError("E_INPUT_CORRUPT", `File backsound tidak memiliki stream audio: ${inputPath}`);
+    }
+    if (!Number.isFinite(probe.durationSeconds) || probe.durationSeconds <= 0) {
+      throw new AppError("E_INPUT_CORRUPT", `Durasi backsound tidak valid: ${inputPath}`);
+    }
+
+    const fingerprint = await FingerprintService.getFingerprint(inputPath);
+    const specHash = computeSpecHash(product.video, product.audio);
+    const musicDir = path.join(cacheDir, "music");
+    fs.mkdirSync(musicDir, { recursive: true });
+
+    const normalizedPath = this.normalizedMusicPath(cacheDir, fingerprint.sha256, slug, specHash);
+    const partPath = path.join(
+      musicDir,
+      `${fingerprint.sha256.slice(0, 8)}__${specHash.slice(0, 8)}__${slug}.part`
+    );
+
+    if (fs.existsSync(normalizedPath)) {
+      try {
+        const cached = await VideoProbe.probeAudioFile(normalizedPath);
+        if (
+          cached.audioStream &&
+          Number(cached.audioStream.sample_rate) === product.audio.sampleRate &&
+          cached.audioStream.channels === product.audio.channels &&
+          Number.isFinite(cached.durationSeconds) &&
+          cached.durationSeconds > 0
+        ) {
+          return {
+            slug,
+            enabled: true,
+            sha256: fingerprint.sha256,
+            sizeBytes: fingerprint.sizeBytes,
+            mtimeMs: fingerprint.mtimeMs,
+            durationSeconds: cached.durationSeconds,
+            origin: "scan",
+            status: "READY",
+            ingestedAt: new Date().toISOString(),
+            error: null,
+          };
+        }
+      } catch {
+        // Cache korup, encode ulang.
+      }
+    }
+
+    const args = [
+      "-y", "-hide_banner", "-nostdin", "-loglevel", "error",
+      "-i", inputPath,
+      "-vn", "-map", "0:a:0",
+      "-c:a", "aac", "-b:a", product.audio.bitrate,
+      "-ar", String(product.audio.sampleRate),
+      "-ac", String(product.audio.channels),
+      "-movflags", "+faststart",
+      "-f", "mp4", partPath,
+    ];
+
+    try {
+      await FFmpegResolver.executeFfmpeg(args, 300000);
+
+      const verify = await VideoProbe.probeAudioFile(partPath);
+      if (
+        !verify.audioStream ||
+        Number(verify.audioStream.sample_rate) !== product.audio.sampleRate ||
+        verify.audioStream.channels !== product.audio.channels ||
+        !Number.isFinite(verify.durationSeconds) ||
+        verify.durationSeconds <= 0
+      ) {
+        throw new AppError("E_VERIFY_FAILED", `Hasil normalisasi backsound tidak memenuhi spesifikasi: ${partPath}`);
+      }
+
+      fs.renameSync(partPath, normalizedPath);
+
+      return {
+        slug,
+        enabled: true,
+        sha256: fingerprint.sha256,
+        sizeBytes: fingerprint.sizeBytes,
+        mtimeMs: fingerprint.mtimeMs,
+        durationSeconds: verify.durationSeconds,
+        origin: "scan",
+        status: "READY",
+        ingestedAt: new Date().toISOString(),
+        error: null,
+      };
+    } catch (err) {
+      if (fs.existsSync(partPath)) {
+        try {
+          fs.unlinkSync(partPath);
+        } catch {
+          // ignore
+        }
       }
       throw err;
     }

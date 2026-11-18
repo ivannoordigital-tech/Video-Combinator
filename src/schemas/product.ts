@@ -26,6 +26,20 @@ export const ProductAudioConfigSchema = z.object({
   targetLufs: z.number().default(-16),
 });
 
+export const MusicSelectionSchema = z.enum(["rotate", "hash", "fixed"]);
+export type MusicSelection = z.infer<typeof MusicSelectionSchema>;
+
+export const ProductMusicConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  /** Volume linear 0..1, default 0.12 (sekitar -18 dB). */
+  volume: z.number().min(0).max(1).default(0.12),
+  fadeInSeconds: z.number().min(0).max(10).default(1),
+  fadeOutSeconds: z.number().min(0).max(10).default(1),
+  loop: z.boolean().default(true),
+  selection: MusicSelectionSchema.default("rotate"),
+  fixedFile: z.string().nullable().default(null),
+});
+
 export const ProductRenderConfigSchema = z.object({
   mode: z.enum(["fast", "quality"]).default("fast"),
   workers: z.number().int().min(1).max(6).default(3),
@@ -52,6 +66,7 @@ export const ProductConfigSchema = z.object({
   createdAt: z.string(),
   video: ProductVideoConfigSchema.default({}),
   audio: ProductAudioConfigSchema.default({}),
+  music: ProductMusicConfigSchema.default({}),
   render: ProductRenderConfigSchema.default({}),
   naming: ProductNamingConfigSchema.default({}),
   limits: ProductLimitsConfigSchema.default({}),
@@ -60,6 +75,7 @@ export const ProductConfigSchema = z.object({
 export type ProductConfig = z.infer<typeof ProductConfigSchema>;
 export type ProductVideoConfig = z.infer<typeof ProductVideoConfigSchema>;
 export type ProductAudioConfig = z.infer<typeof ProductAudioConfigSchema>;
+export type ProductMusicConfig = z.infer<typeof ProductMusicConfigSchema>;
 
 /**
  * Menghasilkan hash 12 karakter dari parameter video dan audio kanonik.
@@ -67,5 +83,22 @@ export type ProductAudioConfig = z.infer<typeof ProductAudioConfigSchema>;
  */
 export function computeSpecHash(video: ProductVideoConfig, audio: ProductAudioConfig): string {
   const payload = JSON.stringify({ video, audio });
+  return createHash("sha256").update(payload).digest("hex").slice(0, 12);
+}
+
+/**
+ * Hash konfigurasi backsound. Dipakai manifest untuk mendeteksi perubahan
+ * volume/fade/selection tanpa mengubah specHash video/audio.
+ */
+export function computeMusicConfigHash(music: ProductMusicConfig): string {
+  const payload = JSON.stringify({
+    enabled: music.enabled,
+    volume: music.volume,
+    fadeInSeconds: music.fadeInSeconds,
+    fadeOutSeconds: music.fadeOutSeconds,
+    loop: music.loop,
+    selection: music.selection,
+    fixedFile: music.fixedFile,
+  });
   return createHash("sha256").update(payload).digest("hex").slice(0, 12);
 }

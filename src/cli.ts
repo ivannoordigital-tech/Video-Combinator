@@ -73,7 +73,7 @@ async function main() {
   let registry = AssetsRegistrySchema.parse({
     schemaVersion: 1,
     specHash: "init",
-    assets: { hook: {}, body: {}, cta: {} },
+    assets: { hook: {}, body: {}, cta: {}, music: {} },
   });
   if (fs.existsSync(assetsPath)) {
     registry = AssetsRegistrySchema.parse(JSON.parse(fs.readFileSync(assetsPath, "utf-8")));
@@ -90,6 +90,7 @@ async function main() {
     console.log(`   Hooks  : ${Object.keys(registry.assets.hook).length}`);
     console.log(`   Bodies : ${Object.keys(registry.assets.body).length}`);
     console.log(`   CTAs   : ${Object.keys(registry.assets.cta).length}`);
+    console.log(`   Music  : ${Object.keys(registry.assets.music).length}`);
     return;
   }
 

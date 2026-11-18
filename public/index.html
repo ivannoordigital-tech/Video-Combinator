@@ -600,6 +600,133 @@
       word-break: break-word;
     }
 
+    /* Backsound Panel */
+    .music-panel {
+      background-color: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .music-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .music-body {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 340px;
+    }
+    @media (max-width: 980px) {
+      .music-body {
+        grid-template-columns: 1fr;
+      }
+      .music-settings {
+        border-left: 0;
+        border-top: 1px solid var(--border);
+      }
+    }
+    .music-list {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 420px;
+      overflow-y: auto;
+    }
+    .music-card {
+      background-color: var(--surface-muted);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .music-card-main {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .music-name {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+      word-break: break-all;
+    }
+    .music-meta {
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+    .music-audio {
+      width: 100%;
+      height: 34px;
+    }
+    .music-card-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .music-settings {
+      border-left: 1px solid var(--border);
+      background-color: var(--surface-muted);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .music-settings h3 {
+      font-size: 0.9rem;
+      color: var(--text);
+    }
+    .music-field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .music-field input[type="number"] {
+      background-color: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 9px;
+      font-size: 0.85rem;
+      min-height: 36px;
+    }
+    .music-row {
+      display: flex;
+      gap: 10px;
+    }
+    .music-row .music-field {
+      flex: 1;
+    }
+    .music-inline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: var(--text);
+      font-weight: 500;
+    }
+    .music-hint {
+      font-size: 0.73rem;
+      line-height: 1.4;
+      color: var(--text-subtle);
+    }
+    .music-empty {
+      padding: 26px 16px;
+      text-align: center;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
     /* Video Player (R-40: strict aspect ratio prevents layout shift) */
     .video-viewport {
       width: 100%;
@@ -930,6 +1057,71 @@
         <div class="clip-scroll-area" id="listCtas"></div>
       </section>
     </div>
+
+    <!-- Backsound Panel (bukan stage concat) -->
+    <section class="music-panel" aria-labelledby="stageMusicTitle">
+      <div class="stage-header">
+        <div class="stage-title-wrap">
+          <span class="stage-title" id="stageMusicTitle">Backsound (Opsional)</span>
+          <span class="stage-badge tabular-num" id="badgeMusic">0 File</span>
+        </div>
+        <div class="music-header-actions">
+          <button class="btn btn-secondary btn-sm" onclick="openDatabaseDir('backsounds', this)" id="btnOpenMusic" title="Buka folder backsounds di File Explorer">Buka Folder</button>
+        </div>
+      </div>
+
+      <div class="music-body">
+        <div class="music-list" id="listMusic"></div>
+
+        <form class="music-settings" id="musicSettings" onsubmit="saveMusicSettings(event)">
+          <h3>Pengaturan Backsound</h3>
+
+          <label class="music-inline">
+            <input type="checkbox" id="musicEnabled">
+            Aktifkan backsound
+          </label>
+
+          <div class="music-field">
+            <label for="musicVolume">Volume: <span id="musicVolumeValue" class="tabular-num">0.12</span></label>
+            <input type="range" id="musicVolume" min="0" max="1" step="0.01" value="0.12" oninput="document.getElementById('musicVolumeValue').textContent = Number(this.value).toFixed(2)">
+          </div>
+
+          <div class="music-row">
+            <div class="music-field">
+              <label for="musicFadeIn">Fade in (dtk)</label>
+              <input type="number" id="musicFadeIn" min="0" max="10" step="0.1" value="1">
+            </div>
+            <div class="music-field">
+              <label for="musicFadeOut">Fade out (dtk)</label>
+              <input type="number" id="musicFadeOut" min="0" max="10" step="0.1" value="1">
+            </div>
+          </div>
+
+          <label class="music-inline">
+            <input type="checkbox" id="musicLoop" checked>
+            Loop jika musik lebih pendek
+          </label>
+
+          <div class="music-field">
+            <label for="musicSelection">Pemilihan track</label>
+            <select id="musicSelection" onchange="onMusicSelectionChange()">
+              <option value="rotate">Rotate per output</option>
+              <option value="hash">Hash kombinasi (stabil)</option>
+              <option value="fixed">Track tetap</option>
+            </select>
+          </div>
+
+          <div class="music-field" id="musicFixedWrap" hidden>
+            <label for="musicFixedFile">Track tetap</label>
+            <select id="musicFixedFile"></select>
+          </div>
+
+          <p class="music-hint">Satu track dipilih otomatis per output. Video tetap lossless; hanya audio yang di-mix ulang.</p>
+
+          <button class="btn btn-primary btn-sm" type="submit" id="btnSaveMusic">Simpan Pengaturan</button>
+        </form>
+      </div>
+    </section>
   </main>
 
   <!-- Modal Tambah Produk (Accessible Dialog) -->
@@ -1298,10 +1490,12 @@
     async function loadProductDetails() {
       connectSSE();
       try {
-        const { registry } = await api(`/api/products/${currentSlug}`);
+        const { product, registry } = await api(`/api/products/${currentSlug}`);
         renderClips("listHooks", "badgeHooks", registry.assets.hook, "hook");
         renderClips("listBodies", "badgeBodies", registry.assets.body, "body");
         renderClips("listCtas", "badgeCtas", registry.assets.cta, "cta");
+        renderMusic(registry.assets.music || {}, product);
+        populateMusicSettings(product, registry.assets.music || {});
         await loadPlan();
       } catch (err) {
         disableGenerate(`Data produk gagal dimuat: ${err.message}`, "Generate Tidak Tersedia");
@@ -1373,6 +1567,147 @@
           </div>
         `;
         container.appendChild(card);
+      }
+    }
+
+    function renderMusic(assetsMap, product) {
+      const container = document.getElementById("listMusic");
+      const items = Object.entries(assetsMap || {});
+      document.getElementById("badgeMusic").textContent = `${items.length} File`;
+      container.innerHTML = "";
+
+      if (items.length === 0) {
+        container.innerHTML = `
+          <div class="music-empty">
+            <strong>Belum ada backsound</strong>
+            <span>Simpan file .mp3, .wav, .m4a, .aac, atau .flac ke database/${escapeHtml(currentSlug)}/backsounds/, lalu tekan Pindai Ulang.</span>
+            <button class="btn btn-secondary btn-sm" type="button" onclick="openDatabaseDir('backsounds', this)" style="margin-top: 4px;">Buka Folder backsounds</button>
+          </div>
+        `;
+        return;
+      }
+
+      for (const [file, item] of items) {
+        const card = document.createElement("div");
+        card.className = "music-card";
+
+        const status = item.status || "ERROR";
+        const badgeClass = status === "READY"
+          ? "badge-ready"
+          : (status === "PROCESSING" ? "badge-normalizing" : "badge-error");
+        const rawDuration = Number(item.durationSeconds);
+        const rawSize = Number(item.sizeBytes);
+        const durationText = Number.isFinite(rawDuration) && rawDuration >= 0 ? `${rawDuration.toFixed(1)}s` : "-";
+        const sizeText = Number.isFinite(rawSize) && rawSize >= 0 ? `${(rawSize / 1024 / 1024).toFixed(1)} MB` : "-";
+        const errorHtml = item.error
+          ? `<div class="clip-error" role="note"><strong>Error:</strong> ${escapeHtml(item.error)}</div>`
+          : "";
+
+        card.innerHTML = `
+          <div class="music-card-main">
+            <div>
+              <div class="music-name">${escapeHtml(file)}</div>
+              <div class="music-meta tabular-num">${durationText} · ${sizeText}</div>
+            </div>
+            <span class="clip-badge-status ${badgeClass}">${escapeHtml(status)}</span>
+          </div>
+          ${errorHtml}
+          <audio class="music-audio" controls preload="none" src="/api/products/${currentSlug}/media/music/${encodeURIComponent(file)}"></audio>
+          <div class="music-card-actions">
+            <button class="btn btn-secondary btn-sm" type="button" data-toggle>${item.enabled ? "Nonaktifkan" : "Aktifkan"}</button>
+          </div>
+        `;
+
+        const toggle = card.querySelector("[data-toggle]");
+        if (toggle) {
+          toggle.addEventListener("click", () => toggleMusicAsset(file, !item.enabled, toggle));
+        }
+        container.appendChild(card);
+      }
+    }
+
+    async function toggleMusicAsset(file, enabled, button) {
+      if (button) button.disabled = true;
+      try {
+        await api(`/api/products/${currentSlug}/assets/music/${encodeURIComponent(file)}`, {
+          method: "PATCH",
+          body: { enabled },
+        });
+        showToast(`Backsound ${enabled ? "diaktifkan" : "dinonaktifkan"}: ${file}`, "success");
+        await loadProductDetails();
+      } catch (err) {
+        if (button) button.disabled = false;
+        showToast(`Gagal mengubah backsound: ${err.message}`, "error");
+      }
+    }
+
+    function onMusicSelectionChange() {
+      const selection = document.getElementById("musicSelection").value;
+      document.getElementById("musicFixedWrap").hidden = selection !== "fixed";
+    }
+
+    function populateMusicSettings(product, musicAssets) {
+      const music = (product && product.music) || {};
+      const enabled = document.getElementById("musicEnabled");
+      const volume = document.getElementById("musicVolume");
+      const volumeValue = document.getElementById("musicVolumeValue");
+      const fadeIn = document.getElementById("musicFadeIn");
+      const fadeOut = document.getElementById("musicFadeOut");
+      const loop = document.getElementById("musicLoop");
+      const selection = document.getElementById("musicSelection");
+      const fixed = document.getElementById("musicFixedFile");
+
+      enabled.checked = music.enabled !== false;
+      const volumeNumber = Number.isFinite(Number(music.volume)) ? Number(music.volume) : 0.12;
+      volume.value = String(volumeNumber);
+      volumeValue.textContent = volumeNumber.toFixed(2);
+      fadeIn.value = String(Number.isFinite(Number(music.fadeInSeconds)) ? Number(music.fadeInSeconds) : 1);
+      fadeOut.value = String(Number.isFinite(Number(music.fadeOutSeconds)) ? Number(music.fadeOutSeconds) : 1);
+      loop.checked = music.loop !== false;
+      selection.value = music.selection || "rotate";
+
+      fixed.innerHTML = `<option value="">Track pertama (otomatis)</option>` +
+        Object.keys(musicAssets || {})
+          .map((file) => `<option value="${escapeHtml(file)}">${escapeHtml(file)}</option>`)
+          .join("");
+      fixed.value = music.fixedFile || "";
+
+      onMusicSelectionChange();
+    }
+
+    async function saveMusicSettings(event) {
+      event.preventDefault();
+      const button = document.getElementById("btnSaveMusic");
+      button.disabled = true;
+
+      const selection = document.getElementById("musicSelection").value;
+      const volume = Number(document.getElementById("musicVolume").value);
+      const fadeIn = Number(document.getElementById("musicFadeIn").value);
+      const fadeOut = Number(document.getElementById("musicFadeOut").value);
+
+      const music = {
+        enabled: document.getElementById("musicEnabled").checked,
+        volume: Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 0.12,
+        fadeInSeconds: Number.isFinite(fadeIn) ? Math.max(0, Math.min(10, fadeIn)) : 1,
+        fadeOutSeconds: Number.isFinite(fadeOut) ? Math.max(0, Math.min(10, fadeOut)) : 1,
+        loop: document.getElementById("musicLoop").checked,
+        selection,
+        fixedFile: selection === "fixed"
+          ? (document.getElementById("musicFixedFile").value || null)
+          : null,
+      };
+
+      try {
+        await api(`/api/products/${currentSlug}`, {
+          method: "PATCH",
+          body: { music },
+        });
+        showToast("Pengaturan backsound disimpan.", "success");
+        await loadProductDetails();
+      } catch (err) {
+        showToast(`Gagal menyimpan pengaturan backsound: ${err.message}`, "error");
+      } finally {
+        button.disabled = false;
       }
     }
 

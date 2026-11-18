@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { AssetsRegistry, AssetItem, AssetKind } from "../schemas/assets.js";
 import { Manifest, OutputItem } from "../schemas/manifest.js";
-import { ProductConfig, computeSpecHash } from "../schemas/product.js";
+import { ProductConfig, computeSpecHash, computeMusicConfigHash } from "../schemas/product.js";
 import { JobScope } from "../schemas/job.js";
 import { NamingUtils } from "./naming.js";
 import { OutputVerifier, VerificationResult, MIN_OUTPUT_BYTES, isMp4StructurallyIntact } from "./verify.js";
@@ -18,6 +18,9 @@ export interface PlanCombination {
   ctaItem: AssetItem;
   status: "QUEUED" | "SKIPPED" | "STALE" | "ORPHAN";
   reason?: string;
+  /** Backsound yang dipilih untuk output ini (null jika musik nonaktif/kosong). */
+  musicFile?: string | null;
+  musicItem?: AssetItem | null;
 }
 
 export interface PlanResult {
@@ -25,6 +28,7 @@ export interface PlanResult {
     hooks: number;
     bodies: number;
     ctas: number;
+    music: number;
     total: number;
     done: number;
     stale: number;
@@ -181,6 +185,55 @@ export class PlanEngine {
       .filter(([_, item]) => item.enabled && item.status === "READY");
     const ctas = Object.entries(registry.assets.cta)
       .filter(([_, item]) => item.enabled && item.status === "READY");
+    const musicTracks = Object.entries(registry.assets.music)
+      .filter(([_, item]) => item.enabled && item.status === "READY");
+
+    const musicFolder = path.join(productRoot, "database", product.slug, "backsounds");
+    let hasMusicFiles = false;
+    try {
+      const audioExtensions = new Set([".mp3", ".wav", ".m4a", ".aac", ".flac"]);
+      hasMusicFiles = fs
+        .readdirSync(musicFolder)
+        .some((file) => audioExtensions.has(path.extname(file).toLowerCase()));
+    } catch {
+      // Folder backsounds belum ada.
+    }
+
+    const musicAvailable = product.music.enabled && musicTracks.length > 0;
+    const musicConfigHash = computeMusicConfigHash(product.music);
+
+    const pickMusic = (
+      key: string,
+      index: number
+    ): { file: string; item: AssetItem } | null => {
+      if (!musicAvailable) return null;
+
+      if (product.music.selection === "fixed") {
+        const fixed = product.music.fixedFile
+          ? musicTracks.find(([file]) => file === product.music.fixedFile)
+          : undefined;
+        const chosen = fixed ?? musicTracks[0]!;
+        return { file: chosen[0], item: chosen[1] };
+      }
+
+      if (product.music.selection === "hash") {
+        const parsed = Number.parseInt(key.slice(0, 8), 16);
+        const chosen = musicTracks[(Number.isFinite(parsed) ? parsed : 0) % musicTracks.length]!;
+        return { file: chosen[0], item: chosen[1] };
+      }
+
+      const chosen = musicTracks[index % musicTracks.length]!;
+      return { file: chosen[0], item: chosen[1] };
+    };
+
+    const isMusicValidForOutput = (out: OutputItem): boolean => {
+      if (!musicAvailable) return !out.music;
+      if (!out.music || !out.musicFingerprint) return false;
+      if (out.musicConfigHash !== musicConfigHash) return false;
+      return musicTracks.some(
+        ([file, item]) => file === out.music && item.sha256 === out.musicFingerprint
+      );
+    };
 
     const totalCombinations = hooks.length * bodies.length * ctas.length;
     const allCombinations: PlanCombination[] = [];
@@ -265,6 +318,10 @@ export class PlanEngine {
               comboStatus = "QUEUED";
               invalidDoneCount++;
               reason = `Verifikasi output DONE gagal: ${verification?.error || "tidak lolos verifikasi"}`;
+            } else if (!isMusicValidForOutput(existingOutput)) {
+              comboStatus = "STALE";
+              staleCount++;
+              reason = "Konfigurasi atau berkas backsound berubah";
             } else {
               comboStatus = "SKIPPED";
               doneCount++;
@@ -297,6 +354,7 @@ export class PlanEngine {
       hook: new Set(Object.keys(registry.assets.hook)),
       body: new Set(Object.keys(registry.assets.body)),
       cta: new Set(Object.keys(registry.assets.cta)),
+      music: new Set(Object.keys(registry.assets.music)),
     };
 
     for (const [filename, out] of Object.entries(manifest.outputs)) {
@@ -344,6 +402,17 @@ export class PlanEngine {
       });
     }
 
+    // Pilih backsound untuk setiap item yang akan dirender. Output DONE yang
+    // sudah punya track valid tidak diubah; hanya item QUEUED/STALE yang dipilih.
+    queuedItems = queuedItems.map((combo, index) => {
+      const picked = pickMusic(combo.key, index);
+      return {
+        ...combo,
+        musicFile: picked?.file ?? null,
+        musicItem: picked?.item ?? null,
+      };
+    });
+
     // Estimasi ukuran dari output DONE yang sudah ada, fallback 18 MB.
     const doneSizes = Object.values(manifest.outputs)
       .filter((out) => out.status === "DONE" && out.sizeBytes > 0)
@@ -389,6 +458,25 @@ export class PlanEngine {
       );
     }
 
+    if (product.music.enabled && musicTracks.length === 0 && hasMusicFiles) {
+      warnings.push("Backsound aktif, tetapi tidak ada track READY di folder backsounds. Render akan berjalan tanpa backsound.");
+    }
+    if (
+      product.music.enabled &&
+      product.music.selection === "fixed" &&
+      product.music.fixedFile &&
+      !musicTracks.some(([file]) => file === product.music.fixedFile)
+    ) {
+      warnings.push(
+        `Backsound fixedFile "${product.music.fixedFile}" tidak ditemukan. Sistem memakai track READY pertama.`
+      );
+    }
+    if (musicAvailable && queuedItems.length > 0) {
+      warnings.push(
+        `Backsound aktif: ${musicTracks.length} track tersedia, dipilih otomatis per output (${product.music.selection}).`
+      );
+    }
+
     if (queuedItems.length > 0) {
       warnings.push(`${queuedItems.length} video baru siap di-generate (estimasi sekitar ${(queuedItems.length * avgOutputMb).toFixed(0)} MB).`);
     }
@@ -398,6 +486,7 @@ export class PlanEngine {
         hooks: hooks.length,
         bodies: bodies.length,
         ctas: ctas.length,
+        music: musicTracks.length,
         total: totalCombinations,
         done: doneCount,
         stale: staleCount,

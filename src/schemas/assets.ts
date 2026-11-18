@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const AssetKindSchema = z.enum(["hook", "body", "cta"]);
+export const AssetKindSchema = z.enum(["hook", "body", "cta", "music"]);
 export type AssetKind = z.infer<typeof AssetKindSchema>;
 
 export const AssetStatusSchema = z.enum(["READY", "ERROR", "PROCESSING"]);
@@ -30,6 +30,7 @@ export const AssetsRegistrySchema = z.object({
     hook: z.record(z.string(), AssetItemSchema).default({}),
     body: z.record(z.string(), AssetItemSchema).default({}),
     cta: z.record(z.string(), AssetItemSchema).default({}),
-  }).default({ hook: {}, body: {}, cta: {} }),
+    music: z.record(z.string(), AssetItemSchema).default({}),
+  }).default({ hook: {}, body: {}, cta: {}, music: {} }),
 });
 export type AssetsRegistry = z.infer<typeof AssetsRegistrySchema>;

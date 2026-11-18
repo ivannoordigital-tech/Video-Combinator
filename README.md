@@ -115,6 +115,18 @@ Ringkasan perubahan teknis dan langkah verifikasi ada di [docs/FIXES.md](docs/FI
 
 ---
 
+## Backsound (Opsional)
+
+Simpan file audio ke `database/<produk>/backsounds/` dengan format `.mp3`, `.wav`, `.m4a`, `.aac`, atau `.flac`, lalu klik **Pindai Ulang**. Panel **Backsound** di dashboard menampilkan track, preview audio, dan pengaturan volume, fade in/out, loop, serta mode pemilihan track.
+
+- Satu track dipilih otomatis per output. Jumlah kombinasi tetap `hooks x bodies x ctas`, tidak dikali jumlah backsound.
+- Mode `rotate` membagi track bergiliran untuk output baru, `hash` memilih stabil berdasarkan kombinasi, dan `fixed` memakai satu track tetap.
+- Video tetap digabung dengan stream-copy. Hanya audio yang di-encode ulang pada pass kedua, jadi kualitas video tidak turun.
+- Jika backsound diaktifkan setelah output lama dibuat, plan menandai output lama sebagai `STALE`. Jalankan cakupan **Stale** atau **Semua** untuk menerapkannya.
+- Backsound yang lebih pendek di-loop; yang lebih panjang dipotong mengikuti durasi video.
+
+---
+
 ## 🛡️ Best Practices & Windows Defender Tips
 Untuk kecepatan I/O maksimal saat render ratusan video, disarankan menambahkan folder kerja ini ke Exclusion Windows Defender:
 1. Buka **Windows Security** $\rightarrow$ **Virus & threat protection**.

@@ -20,6 +20,9 @@ export const OutputItemSchema = z.object({
   specHash: z.string(),
   verified: z.boolean().default(false),
   error: z.string().nullable().default(null),
+  music: z.string().nullable().default(null),
+  musicFingerprint: z.string().nullable().default(null),
+  musicConfigHash: z.string().nullable().default(null),
 });
 export type OutputItem = z.infer<typeof OutputItemSchema>;
 

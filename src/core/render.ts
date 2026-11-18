@@ -6,7 +6,7 @@ import { OutputVerifier } from "./verify.js";
 import { ManifestManager } from "./manifest.js";
 import { ReportGenerator } from "./report.js";
 import { PlanCombination } from "./plan.js";
-import { ProductConfig, computeSpecHash } from "../schemas/product.js";
+import { ProductConfig, computeSpecHash, computeMusicConfigHash } from "../schemas/product.js";
 import { Manifest, OutputItem } from "../schemas/manifest.js";
 import { Job } from "../schemas/job.js";
 import { VideoProbe } from "./probe.js";
@@ -52,6 +52,7 @@ export class RenderEngine {
   private activeProcesses = new Set<ChildProcess>();
   private isCancelled = false;
   private validatedInputs = new Set<string>();
+  private validatedMusic = new Set<string>();
 
   private completionPromise: Promise<Job> | null = null;
   private resolveCompletion: ((job: Job) => void) | null = null;
@@ -196,6 +197,9 @@ export class RenderEngine {
         specHash,
         verified: false,
         error: errorMessage,
+        music: combo.musicFile ?? null,
+        musicFingerprint: combo.musicItem?.sha256 ?? null,
+        musicConfigHash: computeMusicConfigHash(product.music),
       };
 
       try {
@@ -238,6 +242,21 @@ export class RenderEngine {
       const listFile = path.join(partsDir, `${combo.key}.list`);
       const partFile = path.join(partsDir, `${combo.key}.part`);
       const finalFile = path.join(outputDir, combo.filename);
+      const expectedDuration =
+        combo.hookItem.durationSeconds +
+        combo.bodyItem.durationSeconds +
+        combo.ctaItem.durationSeconds;
+      const musicPath = combo.musicItem
+        ? IngestEngine.getMusicCachePath(
+            productRoot,
+            product,
+            combo.musicItem.sha256,
+            combo.musicItem.slug
+          )
+        : null;
+      // Tanpa musik, concat langsung ke part. Dengan musik, concat ke file
+      // sementara lalu pass kedua menulis part dengan audio campuran.
+      const concatFile = musicPath ? path.join(partsDir, `${combo.key}.concat.mp4`) : partFile;
 
       // Preflight ringan: pastikan ketiga cache normalized ada & bisa diprobe.
       const preflightError = await this.preflightInputs([hookNormalized, bodyNormalized, ctaNormalized]);
@@ -246,6 +265,16 @@ export class RenderEngine {
         recordFailure(combo, preflightError);
         events?.onProgress?.(job.done, total, combo.filename);
         return;
+      }
+
+      if (musicPath) {
+        const musicError = await this.preflightMusic(musicPath);
+        if (this.isCancelled) return;
+        if (musicError) {
+          recordFailure(combo, musicError);
+          events?.onProgress?.(job.done, total, combo.filename);
+          return;
+        }
       }
 
       // Buat file list concat (slash format, tanpa BOM)
@@ -264,7 +293,7 @@ export class RenderEngine {
         "-map", "0:v:0", "-map", "0:a:0",
         "-c", "copy",
         "-movflags", "+faststart",
-        "-f", "mp4", partFile,
+        "-f", "mp4", concatFile,
       ];
 
       let stderrTail = "";
@@ -339,12 +368,22 @@ export class RenderEngine {
           }, RENDER_TIMEOUT_MS);
         });
 
-        // Verifikasi
-        const expectedDuration =
-          combo.hookItem.durationSeconds +
-          combo.bodyItem.durationSeconds +
-          combo.ctaItem.durationSeconds;
+        // Pass kedua: campur backsound ke audio, video tetap copy.
+        if (musicPath) {
+          const mixArgs = this.buildMusicArgs(
+            concatFile,
+            musicPath,
+            partFile,
+            expectedDuration,
+            product
+          );
+          stderrTail = await this.runFfmpeg(mixArgs, "music");
+          if (fs.existsSync(concatFile)) {
+            try { fs.unlinkSync(concatFile); } catch {}
+          }
+        }
 
+        // Verifikasi
         const verifyRes = await OutputVerifier.verifyOutput(partFile, expectedDuration, product);
         if (!verifyRes.valid) {
           throw new Error(verifyRes.error || "Gagal verifikasi output");
@@ -358,6 +397,9 @@ export class RenderEngine {
       } catch (err) {
         if (fs.existsSync(partFile)) {
           try { fs.unlinkSync(partFile); } catch {}
+        }
+        if (fs.existsSync(concatFile)) {
+          try { fs.unlinkSync(concatFile); } catch {}
         }
         if (fs.existsSync(listFile)) {
           try { fs.unlinkSync(listFile); } catch {}
@@ -384,9 +426,12 @@ export class RenderEngine {
         return;
       }
 
-      // Hapus file list
+      // Hapus file list dan file concat sementara.
       if (fs.existsSync(listFile)) {
         try { fs.unlinkSync(listFile); } catch {}
+      }
+      if (fs.existsSync(concatFile)) {
+        try { fs.unlinkSync(concatFile); } catch {}
       }
 
       // Item yang sudah terverifikasi tetap dicatat DONE walau cancel datang belakangan.
@@ -407,6 +452,9 @@ export class RenderEngine {
         specHash,
         verified: true,
         error: null,
+        music: combo.musicFile ?? null,
+        musicFingerprint: combo.musicItem?.sha256 ?? null,
+        musicConfigHash: computeMusicConfigHash(product.music),
       };
 
       // Fallback metadata bila verifikasi tidak mengisi nilai (mestinya tidak terjadi).
@@ -513,6 +561,169 @@ export class RenderEngine {
       job.completedAt = new Date().toISOString();
       throw err;
     }
+  }
+
+  /**
+   * Jalankan FFmpeg dengan capture stderr terbatas. Dipakai untuk pass concat
+   * dan pass mix backsound. Error membawa tail stderr untuk diagnosis.
+   */
+  private runFfmpeg(args: string[], label: string): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      const proc = spawn(FFmpegResolver.getFfmpegPath(), args, {
+        windowsHide: true,
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+      this.activeProcesses.add(proc);
+
+      const stderrChunks: Buffer[] = [];
+      let stderrBytes = 0;
+      let settled = false;
+      let timeout: NodeJS.Timeout | undefined;
+      let stderrTail = "";
+
+      const tail = (): string => {
+        const raw = Buffer.concat(stderrChunks, stderrBytes).toString("utf-8");
+        return raw.length > STDERR_TAIL_LIMIT ? raw.slice(-STDERR_TAIL_LIMIT) : raw;
+      };
+
+      const finish = (err?: FfmpegFailure): void => {
+        if (settled) return;
+        settled = true;
+        if (timeout) clearTimeout(timeout);
+        this.activeProcesses.delete(proc);
+        stderrTail = tail();
+        if (err) {
+          err.stderrTail = stderrTail;
+          reject(err);
+        } else {
+          resolve(stderrTail);
+        }
+      };
+
+      proc.stderr?.on("data", (chunk: Buffer) => {
+        stderrChunks.push(chunk);
+        stderrBytes += chunk.length;
+        while (stderrBytes > STDERR_TAIL_LIMIT && stderrChunks.length > 1) {
+          const removed = stderrChunks.shift();
+          if (removed) stderrBytes -= removed.length;
+        }
+      });
+
+      proc.on("error", (err) => {
+        const failure = err as FfmpegFailure;
+        failure.message = `FFmpeg ${label} tidak dapat dijalankan: ${err.message}`;
+        finish(failure);
+      });
+
+      proc.on("close", (code, signal) => {
+        if (code === 0) {
+          finish();
+          return;
+        }
+        const summary = summarizeStderr(tail());
+        const reason = signal ? `killed by ${signal}` : `exit ${code}`;
+        finish(
+          new Error(
+            `FFmpeg ${label} ${reason}${summary ? `: ${summary}` : ""}`
+          ) as FfmpegFailure
+        );
+      });
+
+      timeout = setTimeout(() => {
+        if (settled) return;
+        this.killProcessTree(proc);
+        const summary = summarizeStderr(tail());
+        finish(
+          new Error(
+            `Render timeout (${RENDER_TIMEOUT_MS}ms) pada ${label}${summary ? `: ${summary}` : ""}`
+          ) as FfmpegFailure
+        );
+      }, RENDER_TIMEOUT_MS);
+    });
+  }
+
+  /**
+   * Bangun argumen FFmpeg untuk pass kedua: video di-copy, audio asli dicampur
+   * dengan backsound. `-stream_loop -1` membuat musik berulang bila lebih pendek.
+   */
+  private buildMusicArgs(
+    concatFile: string,
+    musicFile: string,
+    partFile: string,
+    duration: number,
+    product: ProductConfig
+  ): string[] {
+    const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 1;
+    const volume = Math.max(0, Math.min(1, product.music.volume));
+    const fadeIn = Math.min(Math.max(0, product.music.fadeInSeconds), safeDuration / 2);
+    const fadeOut = Math.min(Math.max(0, product.music.fadeOutSeconds), safeDuration / 2);
+
+    const musicFilters = [`volume=${volume.toFixed(4)}`];
+    if (fadeIn > 0) {
+      musicFilters.push(`afade=t=in:st=0:d=${fadeIn.toFixed(3)}`);
+    }
+    if (fadeOut > 0) {
+      musicFilters.push(
+        `afade=t=out:st=${Math.max(0, safeDuration - fadeOut).toFixed(3)}:d=${fadeOut.toFixed(3)}`
+      );
+    }
+
+    const filterComplex =
+      `[1:a]${musicFilters.join(",")}[bg];` +
+      "[0:a][bg]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]";
+
+    const args = [
+      "-y", "-nostdin", "-hide_banner", "-loglevel", "error",
+      "-i", concatFile,
+    ];
+    if (product.music.loop) {
+      args.push("-stream_loop", "-1");
+    }
+    args.push(
+      "-i", musicFile,
+      "-filter_complex", filterComplex,
+      "-map", "0:v:0", "-map", "[a]",
+      "-c:v", "copy",
+      "-c:a", "aac", "-b:a", product.audio.bitrate,
+      "-ar", String(product.audio.sampleRate),
+      "-ac", String(product.audio.channels),
+      "-movflags", "+faststart",
+      "-t", safeDuration.toFixed(3),
+      "-f", "mp4", partFile
+    );
+    return args;
+  }
+
+  /**
+   * Preflight backsound: file ada, bukan 0 byte, dan punya stream audio.
+   */
+  private async preflightMusic(file: string): Promise<string | null> {
+    if (this.validatedMusic.has(file)) return null;
+
+    if (!fs.existsSync(file)) {
+      return `Cache backsound tidak ditemukan: ${file}. Jalankan scan ulang sebelum render.`;
+    }
+
+    try {
+      const stats = fs.statSync(file);
+      if (stats.size === 0) {
+        return `Cache backsound kosong (0 byte): ${file}. Jalankan scan ulang sebelum render.`;
+      }
+    } catch (err) {
+      return `Cache backsound tidak dapat dibaca: ${file} (${(err as Error).message})`;
+    }
+
+    try {
+      const probe = await VideoProbe.probeAudioFile(file);
+      if (!probe.audioStream) {
+        return `Cache backsound tidak memiliki stream audio: ${file}. Jalankan scan ulang sebelum render.`;
+      }
+    } catch (err) {
+      return `Cache backsound gagal diprobe: ${file} (${(err as Error).message})`;
+    }
+
+    this.validatedMusic.add(file);
+    return null;
   }
 
   /**

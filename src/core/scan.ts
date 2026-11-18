@@ -45,12 +45,14 @@ export class ScanEngine {
     product: ProductConfig,
     currentRegistry: AssetsRegistry
   ): Promise<AssetsRegistry> {
-    const kinds: AssetKind[] = ["hook", "body", "cta"];
+    const kinds: AssetKind[] = ["hook", "body", "cta", "music"];
     const folderNames: Record<AssetKind, string> = {
       hook: "hooks",
       body: "bodies",
       cta: "ctas",
+      music: "backsounds",
     };
+    const audioExtensions = new Set([".mp3", ".wav", ".m4a", ".aac", ".flac"]);
 
     const specHash = computeSpecHash(product.video, product.audio);
     const updatedRegistry: AssetsRegistry = {
@@ -60,6 +62,7 @@ export class ScanEngine {
         hook: { ...currentRegistry.assets.hook },
         body: { ...currentRegistry.assets.body },
         cta: { ...currentRegistry.assets.cta },
+        music: { ...currentRegistry.assets.music },
       },
     };
 
@@ -86,13 +89,14 @@ export class ScanEngine {
         }
 
         const ext = path.extname(file).toLowerCase();
-        if (ext !== ".mp4") continue;
+        const isMusic = kind === "music";
+        if (isMusic ? !audioExtensions.has(ext) : ext !== ".mp4") continue;
 
         activeFilenames.add(file);
         const filePath = path.join(dirPath, file);
 
-        // Validasi magic bytes
-        if (!this.isValidMp4Magic(filePath)) {
+        // Magic bytes hanya untuk video. Audio divalidasi oleh ffprobe saat ingest.
+        if (!isMusic && !this.isValidMp4Magic(filePath)) {
           const stats = fs.statSync(filePath);
           updatedRegistry.assets[kind][file] = {
             slug: NamingUtils.toSlug(file),
@@ -126,12 +130,9 @@ export class ScanEngine {
 
         // Cek apakah file berubah (mtime / size) atau cache kanonik untuk specHash ini hilang
         const fingerprint = await FingerprintService.getFingerprint(filePath);
-        const expectedCachePath = IngestEngine.normalizedCachePath(
-          cacheDir,
-          fingerprint.sha256,
-          slug,
-          specHash
-        );
+        const expectedCachePath = isMusic
+          ? IngestEngine.normalizedMusicPath(cacheDir, fingerprint.sha256, slug, specHash)
+          : IngestEngine.normalizedCachePath(cacheDir, fingerprint.sha256, slug, specHash);
         const cacheMissing = existingItem?.status === "READY" && this.isCacheFileMissing(expectedCachePath);
         const isModified =
           !existingItem ||
@@ -142,7 +143,9 @@ export class ScanEngine {
 
         if (isModified || existingItem?.status !== "READY") {
           try {
-            const ingested = await IngestEngine.ingestClip(filePath, slug, product, cacheDir);
+            const ingested = isMusic
+              ? await IngestEngine.ingestMusic(filePath, slug, product, cacheDir)
+              : await IngestEngine.ingestClip(filePath, slug, product, cacheDir);
             updatedRegistry.assets[kind][file] = ingested;
           } catch (err) {
             updatedRegistry.assets[kind][file] = {

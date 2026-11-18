@@ -42,7 +42,7 @@ Dokumen ini merangkum perubahan besar pada branch `fix/audit-2026-11`. Fokus per
 
 ## 5. Verifikasi output DONE
 
-- `OutputVerifier` memeriksa keberadaan file, tipe file reguler, ukuran minimum 50 KB, integritas box MP4 (mendeteksi `mdat` terpotong), stream video dan audio, durasi dengan toleransi 0,25 detik, fps dengan toleransi 0,02, serta parameter kanonik produk.
+- `OutputVerifier` memeriksa keberadaan file, tipe file reguler, ukuran minimum 50 KB, integritas box MP4 (mendeteksi `mdat` terpotong), stream video dan audio, durasi dengan toleransi 0,25 detik, fps dengan toleransi 5 fps (selisih lebih dari 5 fps ditolak), serta parameter kanonik produk.
 - Plan memverifikasi ulang semua entri manifest berstatus `DONE` sebelum dianggap selesai. Hasil verifikasi di-cache berdasarkan `mtime` dan ukuran, dengan batas jumlah entri.
 - Entri `DONE` yang filenya hilang, terpotong, atau gagal probe akan dirender ulang, bukan dilewati. Ini mencegah false positive dari manifest lama.
 - Render memverifikasi file `.part` sebelum rename. Hanya file yang lolos verifikasi yang dicatat `DONE`, lengkap dengan durasi, ukuran, dan `specHash` hasil verifikasi.

@@ -260,7 +260,7 @@ describe("Core Integrity Suite (R1.4/R1.5/R2.9/R2.6)", () => {
     expect(plan.counts.queued).toBe(1);
   }, 120_000);
 
-  it("(e) verifier menolak fps 25 untuk produk 30 fps", async () => {
+  it("(e) verifier mengizinkan selisih fps 5 tetapi menolak selisih 6", async () => {
     const scratchDir = path.join(TEST_ROOT, "scratch");
     fs.mkdirSync(scratchDir, { recursive: true });
     const fps25Path = path.join(scratchDir, "fps25.mp4");
@@ -280,9 +280,18 @@ describe("Core Integrity Suite (R1.4/R1.5/R2.9/R2.6)", () => {
     expect(probe.fps).toBe(25);
     expect(probe.audioStream?.channels).toBe(2);
 
-    const result = await OutputVerifier.verifyOutput(fps25Path, 2, productCrf28);
-    expect(result.valid).toBe(false);
-    expect(result.error).toMatch(/frame rate|fps/i);
+    // 25 fps vs target 30 fps: selisih 5, masih dalam toleransi.
+    const allowed = await OutputVerifier.verifyOutput(fps25Path, 2, productCrf28);
+    expect(allowed.valid).toBe(true);
+
+    // 25 fps vs target 19 fps: selisih 6, harus ditolak.
+    const productFps19 = ProductConfigSchema.parse({
+      ...productCrf28,
+      video: { ...productCrf28.video, fps: 19 },
+    });
+    const rejected = await OutputVerifier.verifyOutput(fps25Path, 2, productFps19);
+    expect(rejected.valid).toBe(false);
+    expect(rejected.error).toMatch(/frame rate|fps/i);
   }, 120_000);
 
   it("(h) fast-path verified=true tidak memanggil ffprobe, file ter-truncate tetap QUEUED", async () => {

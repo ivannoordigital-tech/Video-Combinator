@@ -6,6 +6,7 @@ import { FingerprintService } from "./fingerprint.js";
 import { ProductConfig, computeSpecHash } from "../schemas/product.js";
 import { AssetItem } from "../schemas/assets.js";
 import { AppError } from "../schemas/errors.js";
+import { FPS_TOLERANCE } from "./verify.js";
 
 interface CanonicalCheck {
   ok: boolean;
@@ -241,8 +242,11 @@ export class IngestEngine {
       };
     }
 
-    if (!Number.isFinite(probe.fps) || Math.abs(probe.fps - product.video.fps) > 0.02) {
-      return { ok: false, reason: `fps ${probe.fps} != ${product.video.fps}` };
+    if (!Number.isFinite(probe.fps) || Math.abs(probe.fps - product.video.fps) > FPS_TOLERANCE) {
+      return {
+        ok: false,
+        reason: `fps ${probe.fps} != ${product.video.fps} (toleransi ${FPS_TOLERANCE} fps)`,
+      };
     }
 
     if ((v.pix_fmt || "").toLowerCase() !== product.video.pixFmt.toLowerCase()) {

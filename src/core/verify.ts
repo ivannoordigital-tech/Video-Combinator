@@ -13,8 +13,11 @@ export interface VerificationResult {
 export const MIN_OUTPUT_BYTES = 50 * 1024;
 /** Toleransi deviasi durasi sesuai PRD (0.25 detik). */
 export const DURATION_TOLERANCE_SECONDS = 0.25;
-/** Toleransi deviasi fps output terhadap target produk. */
-export const FPS_TOLERANCE = 0.02;
+/**
+ * Toleransi deviasi fps output terhadap target produk.
+ * Selisih sampai 5 fps masih diterima; lebih dari 5 fps ditolak.
+ */
+export const FPS_TOLERANCE = 5;
 
 function isSquarePixelSar(sar?: string): boolean {
   if (!sar) return true; // tidak dispesifikasikan -> dianggap 1:1 (setsar=1 sudah diterapkan)
@@ -153,14 +156,15 @@ export class OutputVerifier {
         return { valid: false, durationSeconds: 0, sizeBytes: stats.size, error: `Terdapat rotasi tersisa: ${probe.rotation}` };
       }
 
-      // 5. Cek fps (toleransi kecil untuk pembulatan container)
+      // 5. Cek fps. Toleransi 5 fps agar variasi 29,97/30 dan clip 25 fps
+      //    tidak langsung ditolak. Selisih > 5 fps tetap dianggap mismatch.
       const fpsDiff = Math.abs(probe.fps - product.video.fps);
       if (!Number.isFinite(probe.fps) || probe.fps <= 0 || fpsDiff > FPS_TOLERANCE) {
         return {
           valid: false,
           durationSeconds: 0,
           sizeBytes: stats.size,
-          error: `Frame rate ${probe.fps || "tidak terbaca"} fps tidak sesuai target ${product.video.fps} fps`,
+          error: `Frame rate ${probe.fps || "tidak terbaca"} fps tidak sesuai target ${product.video.fps} fps (toleransi ${FPS_TOLERANCE} fps)`,
         };
       }
 

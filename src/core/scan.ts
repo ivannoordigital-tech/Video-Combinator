@@ -27,6 +27,17 @@ export class ScanEngine {
   }
 
   /**
+   * Cache dianggap hilang jika file tidak ada, tidak bisa dibaca, atau berukuran 0.
+   */
+  private static isCacheFileMissing(cachePath: string): boolean {
+    try {
+      return fs.statSync(cachePath).size === 0;
+    } catch {
+      return true;
+    }
+  }
+
+  /**
    * Memindai folder database/<product>/{hooks,bodies,ctas} dan memperbarui assets.json.
    */
   public static async scanProductAssets(
@@ -113,13 +124,21 @@ export class ScanEngine {
           usedSlugs.add(slug);
         }
 
-        // Cek apakah file berubah (mtime / size)
+        // Cek apakah file berubah (mtime / size) atau cache kanonik untuk specHash ini hilang
         const fingerprint = await FingerprintService.getFingerprint(filePath);
+        const expectedCachePath = IngestEngine.normalizedCachePath(
+          cacheDir,
+          fingerprint.sha256,
+          slug,
+          specHash
+        );
+        const cacheMissing = existingItem?.status === "READY" && this.isCacheFileMissing(expectedCachePath);
         const isModified =
           !existingItem ||
           existingItem.sizeBytes !== fingerprint.sizeBytes ||
           Math.abs(existingItem.mtimeMs - fingerprint.mtimeMs) > 10 ||
-          currentRegistry.specHash !== specHash;
+          currentRegistry.specHash !== specHash ||
+          cacheMissing;
 
         if (isModified || existingItem?.status !== "READY") {
           try {

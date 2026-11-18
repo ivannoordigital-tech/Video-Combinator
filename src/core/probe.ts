@@ -42,6 +42,27 @@ export interface ProbeResult {
   fps: number;
 }
 
+function toFiniteNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const num = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+/**
+ * Mengubah string frame rate ffprobe ("30/1", "30000/1001") menjadi angka.
+ * Mengembalikan 0 jika rasio tidak valid agar pemanggil tidak menerima NaN.
+ */
+export function parseFrameRate(rate: unknown): number {
+  if (typeof rate !== "string" || !rate.trim()) return 0;
+  const [numRaw, denRaw] = rate.split("/");
+  const num = Number(numRaw);
+  const den = denRaw === undefined ? 1 : Number(denRaw);
+  if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) return 0;
+  const value = num / den;
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.round(value * 100) / 100;
+}
+
 export class VideoProbe {
   public static async probeFile(filePath: string): Promise<ProbeResult> {
     try {
@@ -78,16 +99,18 @@ export class VideoProbe {
         }
       }
 
-      // Hitung fps dari avg_frame_rate misal "30/1"
-      let fps = 0;
-      if (videoStream.avg_frame_rate) {
-        const [num, den] = videoStream.avg_frame_rate.split("/").map(Number);
-        if (num && den && den !== 0) {
-          fps = Math.round((num / den) * 100) / 100;
-        }
+      // Hitung fps dari avg_frame_rate misal "30/1" (fallback r_frame_rate)
+      let fps = parseFrameRate(videoStream.avg_frame_rate);
+      if (fps === 0) {
+        fps = parseFrameRate(videoStream.r_frame_rate);
       }
 
-      const durationSeconds = Number(format.duration || videoStream.duration || 0);
+      // Durasi: format container lebih akurat, lalu stream video/audio sebagai fallback.
+      // Nilai non-finite (NaN/Infinity) diganti 0 agar perbandingan downstream aman.
+      let durationCandidate = toFiniteNumber(format.duration);
+      if (durationCandidate === null) durationCandidate = toFiniteNumber(videoStream.duration);
+      if (durationCandidate === null) durationCandidate = toFiniteNumber(audioStream?.duration);
+      const durationSeconds = durationCandidate !== null && durationCandidate > 0 ? durationCandidate : 0;
 
       return {
         format,

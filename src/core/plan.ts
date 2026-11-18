@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { AssetsRegistry, AssetItem } from "../schemas/assets.js";
-import { Manifest, OutputStatus } from "../schemas/manifest.js";
+import { AssetsRegistry, AssetItem, AssetKind } from "../schemas/assets.js";
+import { Manifest, OutputItem } from "../schemas/manifest.js";
 import { ProductConfig, computeSpecHash } from "../schemas/product.js";
 import { JobScope } from "../schemas/job.js";
 import { NamingUtils } from "./naming.js";
+import { OutputVerifier, VerificationResult, MIN_OUTPUT_BYTES, isMp4StructurallyIntact } from "./verify.js";
 
 export interface PlanCombination {
   key: string;
@@ -40,6 +41,127 @@ export interface PlanResult {
   };
   blockers: string[];
   warnings: string[];
+}
+
+/**
+ * Cache hasil verifikasi in-memory. Kunci = path + mtimeMs + sizeBytes sehingga
+ * ffprobe tidak dipanggil berulang untuk file yang sama selama plan berikutnya.
+ */
+const verificationCache = new Map<string, Promise<VerificationResult>>();
+const VERIFICATION_CACHE_LIMIT = 5000;
+
+export function clearPlanVerificationCache(): void {
+  verificationCache.clear();
+}
+
+/** Toleransi mtime file terhadap createdAt manifest untuk fast-path. */
+const FAST_PATH_MTIME_SLACK_MS = 1000;
+
+/**
+ * Fast-path murah tanpa ffprobe untuk output yang sudah diverifikasi saat render
+ * (`verified === true`) dan tidak berubah sejak dibuat:
+ * - file ada & berupa file reguler,
+ * - size >= 50 KB dan sama dengan sizeBytes manifest,
+ * - mtime tidak lebih baru dari createdAt manifest (+1 detik),
+ * - struktur box MP4 utuh (mendeteksi file ter-truncate/berisi nol),
+ * - metadata manifest lengkap (durasi, size, specHash).
+ * Jika salah satu syarat tidak terpenuhi, pemanggil wajib memakai verifyOutput penuh.
+ */
+function tryVerifiedFastPath(fullPath: string, out: OutputItem): VerificationResult | null {
+  if (out.verified !== true) return null;
+  if (!Number.isFinite(out.durationSeconds) || out.durationSeconds <= 0) return null;
+  if (!Number.isFinite(out.sizeBytes) || out.sizeBytes <= 0) return null;
+  if (typeof out.specHash !== "string" || out.specHash.length === 0) return null;
+
+  const createdAtMs = Date.parse(out.createdAt);
+  if (!Number.isFinite(createdAtMs)) return null;
+
+  let stats: fs.Stats;
+  try {
+    stats = fs.statSync(fullPath);
+  } catch {
+    return null;
+  }
+
+  if (!stats.isFile()) return null;
+  if (stats.size < MIN_OUTPUT_BYTES) return null;
+  // Ukuran berbeda dari catatan manifest -> file berubah, perlu verifikasi penuh.
+  if (stats.size !== out.sizeBytes) return null;
+  // File yang disentuh setelah render tidak dipercaya tanpa ffprobe.
+  if (stats.mtimeMs > createdAtMs + FAST_PATH_MTIME_SLACK_MS) return null;
+  if (!isMp4StructurallyIntact(fullPath, stats.size)) return null;
+
+  return {
+    valid: true,
+    durationSeconds: out.durationSeconds,
+    sizeBytes: stats.size,
+    error: null,
+  };
+}
+
+async function verifyCached(
+  fullPath: string,
+  expectedDuration: number,
+  product: ProductConfig
+): Promise<VerificationResult> {
+  let stats: fs.Stats;
+  try {
+    stats = fs.statSync(fullPath);
+  } catch {
+    return { valid: false, durationSeconds: 0, sizeBytes: 0, error: "File output tidak ditemukan" };
+  }
+
+  if (!stats.isFile()) {
+    return { valid: false, durationSeconds: 0, sizeBytes: 0, error: "Path output bukan file reguler" };
+  }
+
+  // File terlalu kecil tidak perlu di-probe (dan tidak boleh dianggap DONE).
+  if (stats.size < MIN_OUTPUT_BYTES) {
+    return {
+      valid: false,
+      durationSeconds: 0,
+      sizeBytes: stats.size,
+      error: `Ukuran file terlalu kecil (< ${MIN_OUTPUT_BYTES / 1024} KB)`,
+    };
+  }
+
+  const cacheKey = `${fullPath}|${stats.mtimeMs}|${stats.size}`;
+  const cached = verificationCache.get(cacheKey);
+  if (cached) return cached;
+
+  const pending = OutputVerifier.verifyOutput(fullPath, expectedDuration, product);
+  verificationCache.set(cacheKey, pending);
+
+  if (verificationCache.size > VERIFICATION_CACHE_LIMIT) {
+    // Buang entri tertua (Map menjaga urutan insert) agar memori tetap terbatas.
+    let toDrop = Math.ceil(VERIFICATION_CACHE_LIMIT / 10);
+    for (const key of verificationCache.keys()) {
+      verificationCache.delete(key);
+      if (--toDrop <= 0) break;
+    }
+  }
+
+  return pending;
+}
+
+/** Menjalankan tugas async dengan batas paralel agar tidak membanjiri ffprobe. */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await task(items[index]!);
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
 }
 
 export class PlanEngine {
@@ -78,9 +200,32 @@ export class PlanEngine {
 
     const outputDir = path.join(productRoot, "output", product.slug);
 
+    // Verifikasi semua entri DONE sekali di awal (hasil di-cache per mtime+size).
+    const doneEntries = Object.entries(manifest.outputs).filter(([, out]) => out.status === "DONE");
+    const verificationResults = new Map<string, VerificationResult>();
+
+    const verifiedList = await mapWithConcurrency(doneEntries, 8, async ([filename, out]) => {
+      const fullPath = path.join(outputDir, filename);
+
+      // Jalur cepat: output verified yang file-nya tidak berubah sejak render.
+      const fastResult = tryVerifiedFastPath(fullPath, out);
+      if (fastResult) return [filename, fastResult] as const;
+
+      const expectedDuration = this.resolveExpectedDuration(out, registry);
+      const result = await verifyCached(fullPath, expectedDuration, product);
+      return [filename, result] as const;
+    });
+
+    for (const [filename, result] of verifiedList) {
+      verificationResults.set(filename, result);
+    }
+
+    // Filename kombinasi yang valid pada cartesian aset enabled+READY saat ini.
+    const currentGridFilenames = new Set<string>();
+
     let doneCount = 0;
     let staleCount = 0;
-    let orphanCount = 0;
+    let invalidDoneCount = 0;
 
     for (const [hookFile, hookItem] of hooks) {
       for (const [bodyFile, bodyItem] of bodies) {
@@ -94,9 +239,9 @@ export class PlanEngine {
             key
           );
 
+          currentGridFilenames.add(filename);
+
           const existingOutput = manifest.outputs[filename];
-          const fullPath = path.join(outputDir, filename);
-          const fileExists = fs.existsSync(fullPath) && fs.statSync(fullPath).size > 10240;
 
           let comboStatus: "QUEUED" | "SKIPPED" | "STALE" | "ORPHAN" = "QUEUED";
           let reason = "";
@@ -108,18 +253,25 @@ export class PlanEngine {
               existingOutput.assetFingerprints.cta === ctaItem.sha256;
 
             const sameSpec = existingOutput.specHash === specHash;
+            const verification = verificationResults.get(filename);
+            const verified = verification?.valid === true;
 
-            if (fileExists && sameFingerprints && sameSpec) {
-              comboStatus = "SKIPPED";
-              doneCount++;
-            } else if (!sameFingerprints || !sameSpec) {
+            if (!sameFingerprints || !sameSpec) {
               comboStatus = "STALE";
               staleCount++;
               reason = "Aset sumber atau konfigurasi produk telah diperbarui";
-            } else if (!fileExists) {
+            } else if (!verified) {
+              // Entri manifest mengaku DONE, tetapi file hilang/ter-truncate/gagal probe.
               comboStatus = "QUEUED";
-              reason = "File output hilang dari disk";
+              invalidDoneCount++;
+              reason = `Verifikasi output DONE gagal: ${verification?.error || "tidak lolos verifikasi"}`;
+            } else {
+              comboStatus = "SKIPPED";
+              doneCount++;
             }
+          } else if (existingOutput && existingOutput.status === "FAILED") {
+            comboStatus = "QUEUED";
+            reason = `Render sebelumnya gagal: ${existingOutput.error || "tanpa detail"}`;
           }
 
           allCombinations.push({
@@ -138,6 +290,29 @@ export class PlanEngine {
       }
     }
 
+    // Hitung orphan: output DONE yang kombinasinya tidak ada lagi di cartesian aktif,
+    // atau asetnya sudah tidak terdaftar di registry aktif.
+    let orphanCount = 0;
+    const registryFilenames: Record<AssetKind, Set<string>> = {
+      hook: new Set(Object.keys(registry.assets.hook)),
+      body: new Set(Object.keys(registry.assets.body)),
+      cta: new Set(Object.keys(registry.assets.cta)),
+    };
+
+    for (const [filename, out] of Object.entries(manifest.outputs)) {
+      if (out.status !== "DONE") continue;
+
+      const inCurrentGrid = currentGridFilenames.has(filename);
+      const assetsRegistered =
+        registryFilenames.hook.has(out.hook) &&
+        registryFilenames.body.has(out.body) &&
+        registryFilenames.cta.has(out.cta);
+
+      if (!inCurrentGrid || !assetsRegistered) {
+        orphanCount++;
+      }
+    }
+
     // Filter queue berdasarkan scope
     let queuedItems: PlanCombination[] = [];
 
@@ -146,27 +321,53 @@ export class PlanEngine {
     } else if (scope === "stale") {
       queuedItems = allCombinations.filter((c) => c.status === "STALE");
     } else {
-      // Default: 'new'
+      // Default: 'new'. Kombinasi QUEUED tetap masuk antrean jika:
+      // - belum ada entri manifest, atau
+      // - entri FAILED (retry), atau
+      // - entri DONE tetapi gagal verifikasi (integritas file), atau
+      // - ada aset yang belum pernah dipakai di output DONE.
       queuedItems = allCombinations.filter((c) => {
         if (c.status !== "QUEUED") return false;
-        // Termasuk jika salah satu asetnya baru (belum pernah dipakai di output DONE sebelumnya)
-        // atau jika kombinasi ini memang belum ada
+
+        const existingOutput = manifest.outputs[c.filename];
+        if (!existingOutput) return true;
+        if (existingOutput.status === "FAILED") return true;
+        if (existingOutput.status === "DONE" && verificationResults.get(c.filename)?.valid !== true) {
+          return true;
+        }
+
         const isNewAsset =
           !usedHooksInDone.has(c.hookFile) ||
           !usedBodiesInDone.has(c.bodyFile) ||
           !usedCtasInDone.has(c.ctaFile);
-        return isNewAsset || !manifest.outputs[c.filename];
+        return isNewAsset;
       });
     }
 
-    // Estimasi ukuran dan waktu
-    const avgOutputMb = 18.0; // Rata-rata 1080x1920 30s H.264
+    // Estimasi ukuran dari output DONE yang sudah ada, fallback 18 MB.
+    const doneSizes = Object.values(manifest.outputs)
+      .filter((out) => out.status === "DONE" && out.sizeBytes > 0)
+      .map((out) => out.sizeBytes);
+    const avgOutputMb = doneSizes.length > 0
+      ? Math.round((doneSizes.reduce((sum, size) => sum + size, 0) / doneSizes.length / (1024 * 1024)) * 10) / 10
+      : 18.0;
+
     const requiredMb = Math.ceil(queuedItems.length * avgOutputMb * 1.15 + 500);
     const workers = product.render.workers || 3;
     const etaSeconds = Math.ceil((queuedItems.length * 0.4) / workers);
 
-    // Cek disk space sederhana
-    const freeMb = 50000; // Placeholder disk space safe margin
+    // Disk bebas nyata. -1 berarti tidak bisa dibaca (jangan blokir karena itu).
+    let freeMb = -1;
+    try {
+      const stats = fs.statfsSync(outputDir);
+      const freeBytes = Number(stats.bsize) * Number(stats.bavail);
+      if (Number.isFinite(freeBytes) && freeBytes >= 0) {
+        freeMb = Math.floor(freeBytes / (1024 * 1024));
+      }
+    } catch {
+      // Biarkan -1; UI menampilkan "-" dan render tidak diblokir.
+    }
+
     const blockers: string[] = [];
     const warnings: string[] = [];
 
@@ -176,8 +377,20 @@ export class PlanEngine {
       warnings.push(`Jumlah kombinasi cukup besar (${totalCombinations} video).`);
     }
 
+    if (freeMb >= 0 && freeMb < requiredMb) {
+      blockers.push(`Ruang disk tidak cukup: butuh sekitar ${requiredMb} MB, tersedia ${freeMb} MB.`);
+    } else if (freeMb >= 0 && queuedItems.length > 0 && freeMb < requiredMb * 1.15) {
+      warnings.push(`Ruang disk tersisa ${freeMb} MB, mendekati kebutuhan sekitar ${requiredMb} MB.`);
+    }
+
+    if (invalidDoneCount > 0) {
+      warnings.push(
+        `${invalidDoneCount} output berstatus DONE tidak lolos verifikasi integritas dan akan dirender ulang.`
+      );
+    }
+
     if (queuedItems.length > 0) {
-      warnings.push(`${queuedItems.length} video baru siap di-generate (estimasi ±${(queuedItems.length * avgOutputMb).toFixed(0)} MB).`);
+      warnings.push(`${queuedItems.length} video baru siap di-generate (estimasi sekitar ${(queuedItems.length * avgOutputMb).toFixed(0)} MB).`);
     }
 
     return {
@@ -202,5 +415,27 @@ export class PlanEngine {
       blockers,
       warnings,
     };
+  }
+
+  /**
+   * Durasi ekspektasi berasal dari entri manifest. Untuk entri lama yang durasinya 0,
+   * fallback ke jumlah durasi aset di registry (tetap deterministik).
+   */
+  private static resolveExpectedDuration(out: OutputItem, registry: AssetsRegistry): number {
+    if (Number.isFinite(out.durationSeconds) && out.durationSeconds > 0) {
+      return out.durationSeconds;
+    }
+
+    const parts = [
+      registry.assets.hook[out.hook]?.durationSeconds,
+      registry.assets.body[out.body]?.durationSeconds,
+      registry.assets.cta[out.cta]?.durationSeconds,
+    ];
+
+    if (parts.some((value) => !Number.isFinite(value) || (value ?? 0) <= 0)) {
+      return 0; // tidak diketahui -> verifikasi durasi akan menolak
+    }
+
+    return parts.reduce((sum, value) => sum + (value ?? 0), 0);
   }
 }

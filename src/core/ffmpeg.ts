@@ -18,7 +18,14 @@ export class FFmpegResolver {
   private static cachedHealth: BinaryHealth | null = null;
 
   public static getRootDir(): string {
-    return path.resolve(import.meta.dirname, "../..");
+    let curr = import.meta.dirname;
+    while (curr !== path.dirname(curr)) {
+      if (fs.existsSync(path.join(curr, "package.json"))) {
+        return curr;
+      }
+      curr = path.dirname(curr);
+    }
+    return process.cwd();
   }
 
   public static getFfmpegPath(): string {

@@ -24,6 +24,15 @@
     "loudnorm": true,
     "targetLufs": -16
   },
+  "music": {
+    "enabled": true,
+    "volume": 0.4,
+    "fadeInSeconds": 1,
+    "fadeOutSeconds": 1,
+    "loop": true,
+    "selection": "rotate",
+    "fixedFile": null
+  },
   "render": {
     "mode": "fast",
     "workers": 3,

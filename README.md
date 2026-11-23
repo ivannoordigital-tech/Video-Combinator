@@ -102,6 +102,20 @@ Header `Range` tidak valid atau di luar ukuran file. Muat ulang halaman atau pem
 **422 E_SCAN_REQUIRED**
 Cache normalisasi untuk spesifikasi terbaru belum ada. Ini normal terjadi sekali setelah update yang mengubah nama cache. Klik **Pindai Ulang**, tunggu selesai, lalu klik Generate lagi. Render tidak akan menulis status FAILED hanya karena cache lama.
 
+**Kartu aset merah: "File tidak ditemukan di folder database"**
+Daftar aset dibaca dari `state/<slug>/assets.json`, bukan dari isi folder saat ini. Pesan ini muncul bila entri pernah tercatat, tetapi file dengan nama yang sama tidak ada di folder yang dipindai saat Pindai Ulang terakhir.
+
+Cara cek cepat:
+1. Buka `http://127.0.0.1:<port>/api/health` dan lihat `rootDir`. Pastikan Anda membuka instance yang benar.
+2. Cek folder fisik: `<rootDir>\database\<slug>\hooks` (atau `bodies`, `ctas`, `backsounds`). Nama file harus sama persis, termasuk ekstensi `.mp4`.
+3. Pastikan file tidak berada di subfolder. Scan tidak rekursif.
+4. Jika drive jaringan/OneDrive sedang tidak terbaca, scan akan gagal dengan `E_SCAN_FOLDER_UNREADABLE` dan data aset tidak diubah. Perbaiki drive dulu, baru Pindai Ulang.
+
+Perbaikan:
+- Jika file memang dipindah/di-rename, kembalikan nama filenya lalu klik **Pindai Ulang**.
+- Jika file memang dihapus, klik **Bersihkan Entri Hilang** pada banner peringatan. Aksi ini hanya menghapus entri dari daftar; tidak menyentuh file lain.
+- Kartu ERROR/hilang tidak ikut dihitung sebagai aset READY, jadi kombinasi generate bisa tetap jalan selama masih ada aset READY yang cukup.
+
 **Folder tidak bisa dibuka: 404 E_PATH_INVALID atau 500 E_OPEN_FAILED**
 `404 E_PATH_INVALID` berarti folder target belum ada, misalnya `output/<slug>` atau `database/<slug>/hooks`. Buat produk lewat dashboard agar folder otomatis dibuat, atau buat folder tersebut secara manual lalu coba lagi. `500 E_OPEN_FAILED` berarti File Explorer gagal dibuka (misalnya timeout 2 detik); coba lagi dan periksa pesan `[open-folder]` di konsol server.
 
@@ -121,6 +135,9 @@ Simpan file audio ke `database/<produk>/backsounds/` dengan format `.mp3`, `.wav
 
 - Satu track dipilih otomatis per output. Jumlah kombinasi tetap `hooks x bodies x ctas`, tidak dikali jumlah backsound.
 - Mode `rotate` membagi track bergiliran untuk output baru, `hash` memilih stabil berdasarkan kombinasi, dan `fixed` memakai satu track tetap.
+- Setiap kartu track punya setelan sendiri: **Volume**, **Mulai (detik)**, dan **Selesai (detik)**. Volume kosong berarti memakai volume default global. Kolom selesai kosong berarti memakai track sampai akhir. Jika `loop` aktif, potongan start-selesai diulang sampai durasi video.
+- Di atas pemutar audio tiap track ada slider dua handle untuk memilih potongan awal dan akhir secara visual. Menggeser handle langsung mengisi kolom Mulai/Selesai, dan mengubah kolom angka juga menggeser slider.
+- Gunakan tombol **Tes Hasil (1 video)** untuk merender satu video contoh dengan track pilihan, potongan start/selesai, dan pengaturan volume/fade yang sedang tampil di form. Hasilnya diputar langsung di panel, tidak masuk manifest, dan tidak menambah antrean output. Setelah cocok, klik **Simpan Pengaturan** lalu **Generate**.
 - Video tetap digabung dengan stream-copy. Hanya audio yang di-encode ulang pada pass kedua, jadi kualitas video tidak turun.
 - Jika backsound diaktifkan setelah output lama dibuat, plan menandai output lama sebagai `STALE`. Jalankan cakupan **Stale** atau **Semua** untuk menerapkannya.
 - Backsound yang lebih pendek di-loop; yang lebih panjang dipotong mengikuti durasi video.

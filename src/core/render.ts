@@ -375,7 +375,9 @@ export class RenderEngine {
             musicPath,
             partFile,
             expectedDuration,
-            product
+            product,
+            combo.musicFile ?? "",
+            combo.musicItem?.durationSeconds ?? 0
           );
           stderrTail = await this.runFfmpeg(mixArgs, "music");
           if (fs.existsSync(concatFile)) {
@@ -564,6 +566,115 @@ export class RenderEngine {
   }
 
   /**
+   * Render satu contoh video (preview) dengan backsound tanpa menyentuh manifest
+   * dan tanpa masuk antrean job. Dipakai tombol "Tes Hasil" di panel Backsound.
+   * Output ditulis ke path yang diberikan (biasanya cache/<slug>/preview/).
+   */
+  public async renderPreview(
+    productRoot: string,
+    product: ProductConfig,
+    combo: PlanCombination,
+    outputPath: string
+  ): Promise<{ durationSeconds: number; sizeBytes: number }> {
+    const previewDir = path.dirname(outputPath);
+    fs.mkdirSync(previewDir, { recursive: true });
+
+    const base = path.basename(outputPath, path.extname(outputPath));
+    const listFile = path.join(previewDir, `${base}.list`);
+    const partFile = path.join(previewDir, `${base}.part.mp4`);
+    const hookNormalized = IngestEngine.getNormalizedCachePath(
+      productRoot,
+      product,
+      combo.hookItem.sha256,
+      combo.hookItem.slug
+    );
+    const bodyNormalized = IngestEngine.getNormalizedCachePath(
+      productRoot,
+      product,
+      combo.bodyItem.sha256,
+      combo.bodyItem.slug
+    );
+    const ctaNormalized = IngestEngine.getNormalizedCachePath(
+      productRoot,
+      product,
+      combo.ctaItem.sha256,
+      combo.ctaItem.slug
+    );
+    const expectedDuration =
+      combo.hookItem.durationSeconds +
+      combo.bodyItem.durationSeconds +
+      combo.ctaItem.durationSeconds;
+    const musicPath = combo.musicItem
+      ? IngestEngine.getMusicCachePath(
+          productRoot,
+          product,
+          combo.musicItem.sha256,
+          combo.musicItem.slug
+        )
+      : null;
+    const concatFile = musicPath ? path.join(previewDir, `${base}.concat.mp4`) : partFile;
+
+    try {
+      const preflightError = await this.preflightInputs([hookNormalized, bodyNormalized, ctaNormalized]);
+      if (preflightError) throw new Error(preflightError);
+
+      if (musicPath) {
+        const musicError = await this.preflightMusic(musicPath);
+        if (musicError) throw new Error(musicError);
+      }
+
+      const listContent = [
+        `file '${hookNormalized.replace(/\\/g, "/")}'`,
+        `file '${bodyNormalized.replace(/\\/g, "/")}'`,
+        `file '${ctaNormalized.replace(/\\/g, "/")}'`,
+      ].join("\n") + "\n";
+      fs.writeFileSync(listFile, listContent, "utf-8");
+
+      await this.runFfmpeg(
+        [
+          "-y", "-nostdin", "-hide_banner", "-loglevel", "error",
+          "-f", "concat", "-safe", "0", "-i", listFile,
+          "-map", "0:v:0", "-map", "0:a:0",
+          "-c", "copy",
+          "-movflags", "+faststart",
+          "-f", "mp4", concatFile,
+        ],
+        "preview-concat"
+      );
+
+      if (musicPath) {
+        await this.runFfmpeg(
+          this.buildMusicArgs(
+            concatFile,
+            musicPath,
+            partFile,
+            expectedDuration,
+            product,
+            combo.musicFile ?? "",
+            combo.musicItem?.durationSeconds ?? 0
+          ),
+          "preview-music"
+        );
+      }
+
+      const verify = await OutputVerifier.verifyOutput(partFile, expectedDuration, product);
+      if (!verify.valid) {
+        throw new Error(verify.error || "Hasil preview gagal verifikasi");
+      }
+
+      await this.atomicRenameWithRetry(partFile, outputPath);
+      return { durationSeconds: verify.durationSeconds, sizeBytes: verify.sizeBytes };
+    } finally {
+      for (const temp of [listFile, concatFile, partFile]) {
+        if (temp === outputPath) continue;
+        if (fs.existsSync(temp)) {
+          try { fs.unlinkSync(temp); } catch {}
+        }
+      }
+    }
+  }
+
+  /**
    * Jalankan FFmpeg dengan capture stderr terbatas. Dipakai untuk pass concat
    * dan pass mix backsound. Error membawa tail stderr untuk diagnosis.
    */
@@ -644,21 +755,49 @@ export class RenderEngine {
 
   /**
    * Bangun argumen FFmpeg untuk pass kedua: video di-copy, audio asli dicampur
-   * dengan backsound. `-stream_loop -1` membuat musik berulang bila lebih pendek.
+   * dengan backsound. Potongan start/end dan volume per track diterapkan di sini,
+   * lalu `aloop` membuat potongan musik berulang bila lebih pendek dari video.
    */
   private buildMusicArgs(
     concatFile: string,
     musicFile: string,
     partFile: string,
     duration: number,
-    product: ProductConfig
+    product: ProductConfig,
+    trackFile: string,
+    musicDuration: number
   ): string[] {
     const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 1;
-    const volume = Math.max(0, Math.min(1, product.music.volume));
+    const settings = product.music.tracks[trackFile];
+    const volume = Math.max(0, Math.min(1, settings?.volume ?? product.music.volume));
     const fadeIn = Math.min(Math.max(0, product.music.fadeInSeconds), safeDuration / 2);
     const fadeOut = Math.min(Math.max(0, product.music.fadeOutSeconds), safeDuration / 2);
 
-    const musicFilters = [`volume=${volume.toFixed(4)}`];
+    // Batas potongan track. endSeconds null berarti sampai akhir file musik.
+    const safeMusicDuration =
+      Number.isFinite(musicDuration) && musicDuration > 0
+        ? musicDuration
+        : Math.max(safeDuration, 1);
+    let start = Math.min(Math.max(0, settings?.startSeconds ?? 0), safeMusicDuration);
+    if (start >= safeMusicDuration) start = 0;
+    let end = settings?.endSeconds === null || settings?.endSeconds === undefined
+      ? safeMusicDuration
+      : Math.min(Math.max(0, settings.endSeconds), safeMusicDuration);
+    if (end <= start) end = safeMusicDuration;
+    const segmentDuration = Math.max(0.05, end - start);
+
+    const musicFilters: string[] = [];
+    if (start > 0.001 || end < safeMusicDuration - 0.05) {
+      musicFilters.push(
+        `atrim=start=${start.toFixed(3)}:end=${end.toFixed(3)}`,
+        "asetpts=PTS-STARTPTS"
+      );
+    }
+    if (product.music.loop && segmentDuration < safeDuration - 0.05) {
+      const loopSamples = Math.max(1, Math.round(segmentDuration * product.audio.sampleRate));
+      musicFilters.push(`aloop=loop=-1:size=${loopSamples}`);
+    }
+    musicFilters.push(`volume=${volume.toFixed(4)}`);
     if (fadeIn > 0) {
       musicFilters.push(`afade=t=in:st=0:d=${fadeIn.toFixed(3)}`);
     }
@@ -675,11 +814,6 @@ export class RenderEngine {
     const args = [
       "-y", "-nostdin", "-hide_banner", "-loglevel", "error",
       "-i", concatFile,
-    ];
-    if (product.music.loop) {
-      args.push("-stream_loop", "-1");
-    }
-    args.push(
       "-i", musicFile,
       "-filter_complex", filterComplex,
       "-map", "0:v:0", "-map", "[a]",
@@ -690,7 +824,7 @@ export class RenderEngine {
       "-movflags", "+faststart",
       "-t", safeDuration.toFixed(3),
       "-f", "mp4", partFile
-    );
+    ];
     return args;
   }
 

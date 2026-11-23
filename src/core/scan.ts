@@ -6,7 +6,76 @@ import { NamingUtils } from "./naming.js";
 import { IngestEngine } from "./ingest.js";
 import { FingerprintService } from "./fingerprint.js";
 
+export interface ScanSkippedFile {
+  file: string;
+  reason: "hidden" | "temporary" | "ext";
+}
+
+export interface ScanFolderReport {
+  kind: AssetKind;
+  dirPath: string;
+  exists: boolean;
+  readable: boolean;
+  filesSeen: string[];
+  skipped: ScanSkippedFile[];
+}
+
+export interface ScanMissingEntry {
+  kind: AssetKind;
+  file: string;
+  sizeBytes: number;
+}
+
+export interface ScanReport {
+  specHash: string;
+  scannedAt: string;
+  folders: ScanFolderReport[];
+  missing: ScanMissingEntry[];
+  counts: Record<AssetKind, { ready: number; error: number; missing: number }>;
+}
+
+export interface ScanResult {
+  registry: AssetsRegistry;
+  report: ScanReport;
+}
+
+export interface PruneResult {
+  registry: AssetsRegistry;
+  removed: { kind: AssetKind; file: string; sizeBytes: number }[];
+  skippedKinds: AssetKind[];
+}
+
+export class ScanFolderUnreadableError extends Error {
+  public readonly dirPath: string;
+  public readonly causeCode: string | undefined;
+
+  constructor(dirPath: string, cause: unknown) {
+    const code =
+      cause && typeof cause === "object" && "code" in cause
+        ? String((cause as { code?: unknown }).code)
+        : undefined;
+    super(
+      `Folder database tidak dapat dibaca: ${dirPath}${code ? ` (${code})` : ""}. Periksa izin/drive, lalu Pindai Ulang.`
+    );
+    this.name = "ScanFolderUnreadableError";
+    this.dirPath = dirPath;
+    this.causeCode = code;
+  }
+}
+
+const MISSING_FILE_ERROR =
+  'File tidak ditemukan di folder database. Kembalikan nama file lalu Pindai Ulang, atau hapus entri dengan "Bersihkan entri hilang".';
+
 export class ScanEngine {
+  private static readonly KINDS: AssetKind[] = ["hook", "body", "cta", "music"];
+  private static readonly FOLDER_NAMES: Record<AssetKind, string> = {
+    hook: "hooks",
+    body: "bodies",
+    cta: "ctas",
+    music: "backsounds",
+  };
+  private static readonly AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".m4a", ".aac", ".flac"]);
+
   /**
    * Cek magic bytes untuk memastikan file benar-benar MP4/QuickTime (offset 4 adalah 'ftyp').
    */
@@ -37,63 +106,149 @@ export class ScanEngine {
     }
   }
 
+  private static ensureDir(dirPath: string): void {
+    try {
+      fs.mkdirSync(dirPath, { recursive: true });
+    } catch (err) {
+      throw new ScanFolderUnreadableError(dirPath, err);
+    }
+  }
+
+  private static listFolderFiles(
+    dirPath: string,
+    kind: AssetKind
+  ): { files: string[]; skipped: ScanSkippedFile[] } {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    } catch (err) {
+      throw new ScanFolderUnreadableError(dirPath, err);
+    }
+
+    const files: string[] = [];
+    const skipped: ScanSkippedFile[] = [];
+    const audioAllowed = kind === "music";
+
+    for (const entry of entries) {
+      const file = entry.name;
+      if (!entry.isFile()) {
+        // Abaikan direktori/symlink; jangan tandai sebagai aset hilang.
+        continue;
+      }
+      if (file.startsWith(".")) {
+        skipped.push({ file, reason: "hidden" });
+        continue;
+      }
+      if (file.endsWith(".part") || file.endsWith(".tmp")) {
+        skipped.push({ file, reason: "temporary" });
+        continue;
+      }
+
+      const ext = path.extname(file).toLowerCase();
+      const supported = audioAllowed ? this.AUDIO_EXTENSIONS.has(ext) : ext === ".mp4";
+      if (!supported) {
+        skipped.push({ file, reason: "ext" });
+        continue;
+      }
+      files.push(file);
+    }
+
+    return { files, skipped };
+  }
+
   /**
-   * Memindai folder database/<product>/{hooks,bodies,ctas} dan memperbarui assets.json.
+   * Nama file aset yang benar-benar akan diproses untuk folder tertentu.
+   * Dipakai juga oleh diagnostik server agar konsisten dengan scan/prune.
+   * Melempar ScanFolderUnreadableError bila folder tidak bisa dibaca.
+   */
+  public static listAssetFileNames(dirPath: string, kind: AssetKind): string[] {
+    return this.listFolderFiles(dirPath, kind).files;
+  }
+
+  private static cloneRegistry(currentRegistry: AssetsRegistry, specHash: string): AssetsRegistry {
+    const cloneBucket = (bucket: Record<string, AssetItem>): Record<string, AssetItem> => {
+      const out: Record<string, AssetItem> = {};
+      for (const [k, v] of Object.entries(bucket)) out[k] = { ...v };
+      return out;
+    };
+    return {
+      schemaVersion: 1,
+      specHash,
+      assets: {
+        hook: cloneBucket(currentRegistry.assets.hook),
+        body: cloneBucket(currentRegistry.assets.body),
+        cta: cloneBucket(currentRegistry.assets.cta),
+        music: cloneBucket(currentRegistry.assets.music),
+      },
+    };
+  }
+
+  /**
+   * Memindai folder database/<product>/{hooks,bodies,ctas,backsounds} dan memperbarui assets.json.
+   * Wrapper kompatibilitas: mengembalikan registry saja.
    */
   public static async scanProductAssets(
     productRoot: string,
     product: ProductConfig,
     currentRegistry: AssetsRegistry
   ): Promise<AssetsRegistry> {
-    const kinds: AssetKind[] = ["hook", "body", "cta", "music"];
-    const folderNames: Record<AssetKind, string> = {
-      hook: "hooks",
-      body: "bodies",
-      cta: "ctas",
-      music: "backsounds",
-    };
-    const audioExtensions = new Set([".mp3", ".wav", ".m4a", ".aac", ".flac"]);
+    const { registry } = await this.scanProductAssetsDetailed(productRoot, product, currentRegistry);
+    return registry;
+  }
 
+  /**
+   * Scan detail: mengembalikan registry + laporan diagnostik.
+   * Melempar ScanFolderUnreadableError bila folder database tidak bisa dibaca; registry tidak diubah.
+   */
+  public static async scanProductAssetsDetailed(
+    productRoot: string,
+    product: ProductConfig,
+    currentRegistry: AssetsRegistry
+  ): Promise<ScanResult> {
     const specHash = computeSpecHash(product.video, product.audio);
-    const updatedRegistry: AssetsRegistry = {
-      schemaVersion: 1,
+    const updatedRegistry = this.cloneRegistry(currentRegistry, specHash);
+    const cacheDir = path.join(productRoot, "cache", product.slug);
+
+    const report: ScanReport = {
       specHash,
-      assets: {
-        hook: { ...currentRegistry.assets.hook },
-        body: { ...currentRegistry.assets.body },
-        cta: { ...currentRegistry.assets.cta },
-        music: { ...currentRegistry.assets.music },
+      scannedAt: new Date().toISOString(),
+      folders: [],
+      missing: [],
+      counts: {
+        hook: { ready: 0, error: 0, missing: 0 },
+        body: { ready: 0, error: 0, missing: 0 },
+        cta: { ready: 0, error: 0, missing: 0 },
+        music: { ready: 0, error: 0, missing: 0 },
       },
     };
 
-    const cacheDir = path.join(productRoot, "cache", product.slug);
-
-    for (const kind of kinds) {
-      const dirPath = path.join(productRoot, "database", product.slug, folderNames[kind]);
-      if (!fs.existsSync(dirPath)) {
-        fs.mkdirSync(dirPath, { recursive: true });
+    for (const kind of this.KINDS) {
+      const dirPath = path.join(productRoot, "database", product.slug, this.FOLDER_NAMES[kind]);
+      const existed = fs.existsSync(dirPath);
+      if (!existed) {
+        this.ensureDir(dirPath);
       }
 
-      const files = fs.readdirSync(dirPath);
-      const activeFilenames = new Set<string>();
+      const { files, skipped } = this.listFolderFiles(dirPath, kind);
+      const activeFilenames = new Set(files);
+      report.folders.push({
+        kind,
+        dirPath,
+        exists: existed,
+        readable: true,
+        filesSeen: files,
+        skipped,
+      });
 
       // Buat peta slug yang sudah terpakai untuk menghindari bentrok
       const usedSlugs = new Set<string>();
-      for (const [filename, item] of Object.entries(updatedRegistry.assets[kind])) {
+      for (const item of Object.values(updatedRegistry.assets[kind])) {
         usedSlugs.add(item.slug);
       }
 
       for (const file of files) {
-        if (file.startsWith(".") || file.endsWith(".part") || file.endsWith(".tmp")) {
-          continue;
-        }
-
-        const ext = path.extname(file).toLowerCase();
-        const isMusic = kind === "music";
-        if (isMusic ? !audioExtensions.has(ext) : ext !== ".mp4") continue;
-
-        activeFilenames.add(file);
         const filePath = path.join(dirPath, file);
+        const isMusic = kind === "music";
 
         // Magic bytes hanya untuk video. Audio divalidasi oleh ffprobe saat ingest.
         if (!isMusic && !this.isValidMp4Magic(filePath)) {
@@ -114,7 +269,7 @@ export class ScanEngine {
         }
 
         // Tentukan slug stabil
-        let existingItem = updatedRegistry.assets[kind][file];
+        const existingItem = updatedRegistry.assets[kind][file];
         let slug = existingItem?.slug;
 
         if (!slug) {
@@ -165,18 +320,80 @@ export class ScanEngine {
       }
 
       // Tandai file yang hilang di folder sebagai ERROR / tidak aktif
+      const missingFiles = new Set<string>();
       for (const existingFile of Object.keys(updatedRegistry.assets[kind])) {
         if (!activeFilenames.has(existingFile)) {
           const item = updatedRegistry.assets[kind][existingFile];
           if (item) {
-            item.enabled = false;
-            item.status = "ERROR";
-            item.error = "File tidak ditemukan di folder database";
+            updatedRegistry.assets[kind][existingFile] = {
+              ...item,
+              enabled: false,
+              status: "ERROR",
+              error: MISSING_FILE_ERROR,
+            };
+            missingFiles.add(existingFile);
+            report.missing.push({ kind, file: existingFile, sizeBytes: item.sizeBytes });
+            report.counts[kind].missing += 1;
           }
+        }
+      }
+
+      // `error` di sini hanya untuk ERROR non-hilang (mis. korup/gagal ingest);
+      // entri hilang sudah dihitung terpisah di `missing`.
+      for (const [file, item] of Object.entries(updatedRegistry.assets[kind])) {
+        if (item.status === "READY") report.counts[kind].ready += 1;
+        else if (item.status === "ERROR" && !missingFiles.has(file)) report.counts[kind].error += 1;
+      }
+    }
+
+    return { registry: updatedRegistry, report };
+  }
+
+  /**
+   * Hapus entri aset yang filenya benar-benar tidak ada di folder database.
+   * Folder yang tidak ada/tidak terbaca dilewati (tidak dihapus entrinya),
+   * agar drive/OneDrive yang sementara putus tidak menghapus riwayat aset.
+   */
+  public static pruneMissingAssets(
+    productRoot: string,
+    product: ProductConfig,
+    currentRegistry: AssetsRegistry
+  ): PruneResult {
+    const specHash = computeSpecHash(product.video, product.audio);
+    const updatedRegistry = this.cloneRegistry(currentRegistry, specHash);
+    const removed: { kind: AssetKind; file: string; sizeBytes: number }[] = [];
+    const skippedKinds: AssetKind[] = [];
+
+    for (const kind of this.KINDS) {
+      const dirPath = path.join(productRoot, "database", product.slug, this.FOLDER_NAMES[kind]);
+
+      let files: string[];
+      try {
+        if (!fs.existsSync(dirPath)) {
+          // Folder tidak ada: lewati, jangan hapus entri.
+          skippedKinds.push(kind);
+          continue;
+        }
+        files = this.listFolderFiles(dirPath, kind).files;
+      } catch {
+        // Folder tidak terbaca (izin/drive): lewati, jangan hapus entri.
+        skippedKinds.push(kind);
+        continue;
+      }
+
+      const activeFilenames = new Set(files);
+
+      for (const existingFile of Object.keys(updatedRegistry.assets[kind])) {
+        if (!activeFilenames.has(existingFile)) {
+          const item = updatedRegistry.assets[kind][existingFile];
+          if (item) {
+            removed.push({ kind, file: existingFile, sizeBytes: item.sizeBytes });
+          }
+          delete updatedRegistry.assets[kind][existingFile];
         }
       }
     }
 
-    return updatedRegistry;
+    return { registry: updatedRegistry, removed, skippedKinds };
   }
 }

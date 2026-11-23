@@ -599,6 +599,51 @@
       padding: 6px 8px;
       word-break: break-word;
     }
+    .clip-missing {
+      border-color: rgba(239, 68, 68, 0.35);
+      background: linear-gradient(180deg, rgba(239,68,68,0.05), var(--surface-muted));
+    }
+    .missing-media {
+      background-color: #09090b;
+      border: 1px dashed rgba(239, 68, 68, 0.45);
+      border-radius: 6px;
+      min-height: 140px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 16px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.82rem;
+    }
+    .missing-media svg { color: var(--danger); opacity: 0.9; }
+    .missing-media-title { color: #fca5a5; font-weight: 600; font-size: 0.84rem; }
+    .missing-media-path { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.72rem; word-break: break-all; opacity: 0.9; }
+    .asset-banner {
+      margin-bottom: 20px;
+      padding: 14px 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      background-color: var(--warn-surface);
+      color: #fde68a;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .asset-banner.danger {
+      border-color: rgba(239, 68, 68, 0.4);
+      background-color: var(--danger-surface);
+      color: #fca5a5;
+    }
+    .asset-banner-icon { flex-shrink: 0; margin-top: 1px; }
+    .asset-banner-body { flex: 1; min-width: 0; }
+    .asset-banner-title { font-weight: 600; font-size: 0.92rem; margin-bottom: 4px; color: var(--text-main); }
+    .asset-banner-desc { font-size: 0.84rem; line-height: 1.5; margin-bottom: 10px; }
+    .asset-banner-files { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.76rem; margin: 0 0 10px; padding-left: 18px; color: var(--text-muted); }
+    .asset-banner-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .badge-count-missing { color: var(--danger); font-weight: 500; }
 
     /* Backsound Panel */
     .music-panel {
@@ -668,6 +713,129 @@
       justify-content: flex-end;
       gap: 8px;
     }
+    .music-range-labels {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .music-range {
+      --range-start: 0%;
+      --range-end: 100%;
+      position: relative;
+      height: 30px;
+      margin: 2px 0 0;
+      touch-action: none;
+    }
+    .music-range-track {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 11px;
+      height: 6px;
+      border-radius: 999px;
+      background-color: var(--border);
+      overflow: hidden;
+    }
+    .music-range-fill {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: var(--range-start);
+      right: calc(100% - var(--range-end));
+      background-color: var(--primary);
+      border-radius: 999px;
+    }
+    .music-range input[type="range"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 30px;
+      margin: 0;
+      background: transparent;
+      -webkit-appearance: none;
+      appearance: none;
+      pointer-events: none;
+    }
+    .music-range input[type="range"]::-webkit-slider-runnable-track {
+      height: 6px;
+      background: transparent;
+    }
+    .music-range input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      margin-top: -5px;
+      border-radius: 50%;
+      background-color: var(--primary);
+      border: 2px solid #0b0b0d;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+      cursor: grab;
+      pointer-events: auto;
+    }
+    .music-range input[type="range"]::-moz-range-track {
+      height: 6px;
+      background: transparent;
+    }
+    .music-range input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background-color: var(--primary);
+      border: 2px solid #0b0b0d;
+      cursor: grab;
+      pointer-events: auto;
+    }
+    .music-range input[type="range"]:disabled::-webkit-slider-thumb {
+      background-color: var(--text-subtle);
+      cursor: not-allowed;
+    }
+    .music-range input[type="range"]:disabled::-moz-range-thumb {
+      background-color: var(--text-subtle);
+      cursor: not-allowed;
+    }
+    .music-range [data-range-start] {
+      z-index: 4;
+    }
+    .music-range [data-range-end] {
+      z-index: 3;
+    }
+    .music-track-settings {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .music-track-settings label {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .music-track-settings input {
+      width: 100%;
+      min-height: 30px;
+      padding: 4px 7px;
+      background-color: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      font-size: 0.78rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .music-track-settings input:focus {
+      outline: none;
+      border-color: var(--border-focus);
+    }
+    @media (max-width: 520px) {
+      .music-track-settings {
+        grid-template-columns: 1fr;
+      }
+    }
     .music-settings {
       border-left: 1px solid var(--border);
       background-color: var(--surface-muted);
@@ -725,6 +893,34 @@
       flex-direction: column;
       align-items: center;
       gap: 8px;
+    }
+    .music-test-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .music-test-status {
+      min-height: 18px;
+    }
+    .music-test-result {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background-color: #000000;
+      overflow: hidden;
+    }
+    .music-test-result video {
+      display: block;
+      width: 100%;
+      max-height: 420px;
+      aspect-ratio: 9 / 16;
+      object-fit: contain;
+      background-color: #000000;
+    }
+    .music-test-meta {
+      padding: 8px 10px;
+      margin: 0;
+      background-color: var(--surface-muted);
+      border-top: 1px solid var(--border);
     }
 
     /* Video Player (R-40: strict aspect ratio prevents layout shift) */
@@ -1019,6 +1215,22 @@
       </div>
     </section>
 
+    <section class="asset-banner" id="missingAssetsBanner" hidden aria-live="polite">
+      <div class="asset-banner-icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+      </div>
+      <div class="asset-banner-body">
+        <div class="asset-banner-title" id="missingAssetsTitle">Entri aset hilang</div>
+        <div class="asset-banner-desc" id="missingAssetsDesc"></div>
+        <ul class="asset-banner-files" id="missingAssetsFiles" hidden></ul>
+        <div class="asset-banner-actions">
+          <button class="btn btn-secondary btn-sm" type="button" id="btnOpenMissingFolder">Buka Folder</button>
+          <button class="btn btn-secondary btn-sm" type="button" id="btnRescanMissing">Pindai Ulang</button>
+          <button class="btn btn-danger btn-sm" type="button" id="btnPruneMissing">Bersihkan Entri Hilang</button>
+        </div>
+      </div>
+    </section>
+
     <!-- 3-Stage Pipeline Grid -->
     <div class="pipeline-grid">
       <!-- 1. Hooks Stage -->
@@ -1083,7 +1295,7 @@
 
           <div class="music-field">
             <label for="musicVolume">Volume: <span id="musicVolumeValue" class="tabular-num">0.12</span></label>
-            <input type="range" id="musicVolume" min="0" max="1" step="0.01" value="0.12" oninput="document.getElementById('musicVolumeValue').textContent = Number(this.value).toFixed(2)">
+            <input type="range" id="musicVolume" min="0" max="1" step="0.01" value="0.12" oninput="onMusicVolumeInput(this.value)">
           </div>
 
           <div class="music-row">
@@ -1117,6 +1329,22 @@
           </div>
 
           <p class="music-hint">Satu track dipilih otomatis per output. Video tetap lossless; hanya audio yang di-mix ulang.</p>
+          <p class="music-hint">Volume dan potongan start/selesai diatur per kartu track di sebelah kiri. Volume kosong berarti memakai volume default global; kolom selesai kosong berarti sampai akhir track.</p>
+
+          <div class="music-field">
+            <label for="musicTestTrack">Track untuk tes</label>
+            <select id="musicTestTrack"></select>
+          </div>
+
+          <div class="music-test-actions">
+            <button class="btn btn-secondary btn-sm" type="button" id="btnTestMusic">Tes Hasil (1 video)</button>
+          </div>
+          <div class="music-hint music-test-status" id="musicTestStatus" role="status" aria-live="polite"></div>
+
+          <div class="music-test-result" id="musicTestResult" hidden>
+            <video id="musicTestVideo" controls playsinline preload="metadata"></video>
+            <p class="music-hint music-test-meta" id="musicTestMeta"></p>
+          </div>
 
           <button class="btn btn-primary btn-sm" type="submit" id="btnSaveMusic">Simpan Pengaturan</button>
         </form>
@@ -1153,11 +1381,26 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="modalConfirm" role="dialog" aria-modal="true" aria-labelledby="modalConfirmTitle">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modalConfirmTitle">Konfirmasi</h2>
+        <button class="btn btn-secondary btn-sm" id="modalConfirmClose" aria-label="Tutup dialog">✕</button>
+      </div>
+      <div id="modalConfirmBody" style="font-size:0.9rem; color:var(--text-muted); line-height:1.6; margin-bottom: 20px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="modalConfirmCancel">Batal</button>
+        <button class="btn btn-danger" id="modalConfirmOk">Hapus</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Feedbacks -->
   <div class="toast-container" id="toastContainer" role="status" aria-live="polite"></div>
 
   <script>
     let currentSlug = "";
+    let serverCapabilities = {};
     let sseSource = null;
     let lastActiveElement = null;
 
@@ -1178,9 +1421,32 @@
       current: null,
     };
     let lastErrors = [];
+    let lastDiagnostics = null;
     const recentErrorToasts = new Map();
     const MAX_RENDER_ERRORS = 20;
     const ERROR_TOAST_DEDUPE_MS = 10000;
+
+    let confirmResolver = null;
+    function closeConfirmModal(result) {
+      const modal = document.getElementById("modalConfirm");
+      modal.classList.remove("active");
+      const resolve = confirmResolver;
+      confirmResolver = null;
+      if (resolve) resolve(result);
+      if (lastActiveElement) lastActiveElement.focus();
+    }
+    function requestConfirm({ title, body, confirmLabel = "Lanjutkan", danger = false }) {
+      const modal = document.getElementById("modalConfirm");
+      document.getElementById("modalConfirmTitle").textContent = title;
+      document.getElementById("modalConfirmBody").textContent = body;
+      const okBtn = document.getElementById("modalConfirmOk");
+      okBtn.textContent = confirmLabel;
+      okBtn.className = danger ? "btn btn-danger" : "btn btn-primary";
+      lastActiveElement = document.activeElement;
+      modal.classList.add("active");
+      okBtn.focus();
+      return new Promise((resolve) => { confirmResolver = resolve; });
+    }
 
     // Toast Notification Utility
     function showToast(message, type = "info", opts = {}) {
@@ -1425,7 +1691,32 @@
     }
 
 
+    async function loadCapabilities() {
+      try {
+        const data = await api("/api/capabilities");
+        serverCapabilities = (data && typeof data === "object") ? data : {};
+      } catch {
+        serverCapabilities = {};
+      }
+      applyMusicPreviewCapability();
+    }
+
+    function applyMusicPreviewCapability() {
+      const supported = serverCapabilities.musicPreview === true;
+      const trackField = document.getElementById("musicTestTrack")?.closest(".music-field");
+      if (trackField) trackField.hidden = !supported;
+      const button = document.getElementById("btnTestMusic");
+      const status = document.getElementById("musicTestStatus");
+      const result = document.getElementById("musicTestResult");
+      if (button) button.hidden = !supported;
+      if (!supported) {
+        if (status) status.textContent = "Tes Hasil belum aktif di server ini. Tutup lalu jalankan ulang Buka_Dashboard.bat.";
+        if (result) result.hidden = true;
+      }
+    }
+
     async function init() {
+      await loadCapabilities();
       await loadProductList();
       setupKeyboardShortcuts();
     }
@@ -1433,6 +1724,11 @@
     function setupKeyboardShortcuts() {
       window.addEventListener("keydown", (e) => {
         if (e.key === "Escape") {
+          const confirmModal = document.getElementById("modalConfirm");
+          if (confirmModal.classList.contains("active")) {
+            closeConfirmModal(false);
+            return;
+          }
           const modal = document.getElementById("modalProduct");
           if (modal.classList.contains("active")) {
             closeNewProductModal();
@@ -1440,12 +1736,20 @@
         }
       });
 
-      // Close modal on backdrop click
       document.getElementById("modalProduct").addEventListener("click", (e) => {
-        if (e.target.id === "modalProduct") {
-          closeNewProductModal();
-        }
+        if (e.target.id === "modalProduct") closeNewProductModal();
       });
+      document.getElementById("modalConfirm").addEventListener("click", (e) => {
+        if (e.target.id === "modalConfirm") closeConfirmModal(false);
+      });
+      document.getElementById("modalConfirmClose").addEventListener("click", () => closeConfirmModal(false));
+      document.getElementById("modalConfirmCancel").addEventListener("click", () => closeConfirmModal(false));
+      document.getElementById("modalConfirmOk").addEventListener("click", () => closeConfirmModal(true));
+
+      document.getElementById("btnOpenMissingFolder").addEventListener("click", () => openDatabaseDir("", null));
+      document.getElementById("btnRescanMissing").addEventListener("click", () => rescanCurrentProduct());
+      document.getElementById("btnPruneMissing").addEventListener("click", () => pruneMissingAssets());
+      document.getElementById("btnTestMusic").addEventListener("click", () => testMusicPreview());
     }
 
     async function loadProductList() {
@@ -1490,7 +1794,10 @@
     async function loadProductDetails() {
       connectSSE();
       try {
-        const { product, registry } = await api(`/api/products/${currentSlug}`);
+        const data = await api(`/api/products/${currentSlug}`);
+        const { product, registry } = data;
+        lastDiagnostics = data.diagnostics || null;
+        renderMissingAssetsBanner();
         renderClips("listHooks", "badgeHooks", registry.assets.hook, "hook");
         renderClips("listBodies", "badgeBodies", registry.assets.body, "body");
         renderClips("listCtas", "badgeCtas", registry.assets.cta, "cta");
@@ -1498,9 +1805,124 @@
         populateMusicSettings(product, registry.assets.music || {});
         await loadPlan();
       } catch (err) {
+        lastDiagnostics = null;
+        renderMissingAssetsBanner();
         disableGenerate(`Data produk gagal dimuat: ${err.message}`, "Generate Tidak Tersedia");
         setPlanStatus(`Data produk gagal dimuat: ${err.message}`, "error");
         showToast(`Gagal membaca data produk: ${err.message}`, "error");
+      }
+    }
+
+    function missingKeysSet(kind) {
+      const set = new Set();
+      const keys = lastDiagnostics?.missingKeys;
+      if (!Array.isArray(keys)) return set;
+      for (const k of keys) {
+        if (k && k.kind === kind && typeof k.file === "string") set.add(k.file);
+      }
+      return set;
+    }
+
+    function renderMissingAssetsBanner() {
+      const banner = document.getElementById("missingAssetsBanner");
+      const desc = document.getElementById("missingAssetsDesc");
+      const filesEl = document.getElementById("missingAssetsFiles");
+      const title = document.getElementById("missingAssetsTitle");
+      const btnPrune = document.getElementById("btnPruneMissing");
+      const btnOpen = document.getElementById("btnOpenMissingFolder");
+      const diag = lastDiagnostics;
+
+      if (!diag) {
+        banner.hidden = true;
+        return;
+      }
+
+      const missingCount = Number(diag.missingCount) || 0;
+      const readable = diag.readable !== false;
+      if (!readable) {
+        banner.hidden = false;
+        banner.classList.add("danger");
+        title.textContent = "Folder database tidak terbaca";
+        const folderText = Array.isArray(diag.folders)
+          ? diag.folders.filter((f) => !f.readable).map((f) => f.dirPath).join(", ")
+          : (diag.databaseDir || "database");
+        desc.textContent = `Aplikasi tidak bisa membaca folder database: ${folderText}. Periksa drive/izin/OneDrive, lalu Pindai Ulang. Data aset tidak diubah.`;
+        filesEl.hidden = true;
+        filesEl.innerHTML = "";
+        btnPrune.style.display = "none";
+        btnOpen.style.display = "";
+        return;
+      }
+
+      banner.classList.remove("danger");
+      btnPrune.style.display = "";
+      btnOpen.style.display = "";
+      if (missingCount <= 0) {
+        banner.hidden = true;
+        filesEl.hidden = true;
+        filesEl.innerHTML = "";
+        return;
+      }
+
+      banner.hidden = false;
+      title.textContent = "Entri aset hilang terdeteksi";
+      const dbDir = diag.databaseDir ? `${diag.databaseDir}\\<hooks|bodies|ctas|backsounds>` : "folder database";
+      desc.textContent = `${missingCount} entri tercatat di database tetapi filenya tidak ada di ${dbDir}. Ini biasanya terjadi karena file dipindah/di-rename/dihapus, atau kamu sedang melihat folder yang berbeda. Render hanya memakai aset READY.`;
+
+      const keys = Array.isArray(diag.missingKeys) ? diag.missingKeys : [];
+      const preview = keys.slice(0, 5);
+      filesEl.innerHTML = preview.map((k) => `<li>${escapeHtml(k.kind)}: ${escapeHtml(k.file)}</li>`).join("");
+      if (keys.length > 5) {
+        filesEl.innerHTML += `<li>...dan ${keys.length - 5} entri lainnya</li>`;
+      }
+      filesEl.hidden = preview.length === 0;
+    }
+
+    async function pruneMissingAssets() {
+      const diag = lastDiagnostics;
+      const count = Number(diag?.missingCount) || 0;
+      if (!currentSlug) {
+        showToast("Pilih produk terlebih dahulu", "error");
+        return;
+      }
+      if (count <= 0) {
+        showToast("Tidak ada entri hilang untuk dibersihkan.", "info");
+        return;
+      }
+      const ok = await requestConfirm({
+        title: "Bersihkan entri hilang?",
+        body: `${count} entri hilang akan dihapus dari daftar aset. File di folder database tidak disentuh. Entri bisa muncul kembali jika file dikembalikan lalu Pindai Ulang.`,
+        confirmLabel: "Bersihkan",
+        danger: true,
+      });
+      if (!ok) return;
+
+      const btn = document.getElementById("btnPruneMissing");
+      const prev = btn.disabled;
+      btn.disabled = true;
+      try {
+        const data = await api(`/api/products/${currentSlug}/assets/prune-missing`, { method: "POST" });
+        lastDiagnostics = data.diagnostics || lastDiagnostics;
+        const removed = Array.isArray(data.removed) ? data.removed.length : 0;
+        const skipped = Array.isArray(data.skippedKinds) ? data.skippedKinds : [];
+        if (skipped.length > 0) {
+          const skipText = skipped.join(", ");
+          showToast(
+            `${removed} entri dihapus. Folder tidak terbaca: ${skipText} — entri jenis itu tidak dihapus. Periksa drive/izin lalu coba lagi.`,
+            "warning",
+            { duration: 12000 }
+          );
+        } else {
+          showToast(
+            removed > 0 ? `${removed} entri hilang dihapus dari daftar.` : "Tidak ada entri hilang yang dihapus.",
+            removed > 0 ? "success" : "info"
+          );
+        }
+        await loadProductDetails();
+      } catch (err) {
+        showToast(err.message || "Gagal membersihkan entri hilang.", "error");
+      } finally {
+        btn.disabled = prev;
       }
     }
 
@@ -1508,7 +1930,12 @@
       const container = document.getElementById(containerId);
       container.innerHTML = "";
       const items = Object.entries(assetsMap || {});
-      document.getElementById(badgeId).textContent = `${items.length} File`;
+      const missingSet = missingKeysSet(kind);
+      const missingCount = items.filter(([file]) => missingSet.has(file)).length;
+      const badge = document.getElementById(badgeId);
+      badge.innerHTML = missingCount > 0
+        ? `${items.length} File <span class="badge-count-missing">· ${missingCount} hilang</span>`
+        : `${items.length} File`;
 
       const kindFolderNames = { hook: "hooks", body: "bodies", cta: "ctas" };
       const folderName = kindFolderNames[kind];
@@ -1522,7 +1949,7 @@
               </svg>
             </div>
             <div class="stage-empty-title">Folder ${kind} kosong</div>
-            <div class="stage-empty-desc">Simpan file .mp4 ke database/${currentSlug}/${folderName}/ lalu tekan Pindai Ulang.</div>
+            <div class="stage-empty-desc">Simpan file .mp4 ke database/${escapeHtml(currentSlug)}/${folderName}/ lalu tekan Pindai Ulang.</div>
             <button class="btn btn-secondary btn-sm" onclick="openDatabaseDir('${folderName}', this)" style="margin-top: 6px;">Buka Folder ${folderName}</button>
           </div>
         `;
@@ -1531,7 +1958,8 @@
 
       for (const [file, item] of items) {
         const card = document.createElement("div");
-        card.className = "clip-card";
+        const isMissing = missingSet.has(file) || (item.status === "ERROR" && typeof item.error === "string" && item.error.startsWith("File tidak ditemukan"));
+        card.className = isMissing ? "clip-card clip-missing" : "clip-card";
         const status = item.status || "ERROR";
         const badgeClass = status === "READY"
           ? "badge-ready"
@@ -1546,6 +1974,23 @@
           ? `<div class="clip-error" role="note"><strong>Error:</strong> ${escapeHtml(item.error)}</div>`
           : "";
 
+        const mediaHtml = isMissing
+          ? `
+          <div class="missing-media" role="note">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            <div class="missing-media-title">File tidak ada di folder</div>
+            <div>Kembalikan file ke folder database atau bersihkan entri ini.</div>
+            <div class="missing-media-path">${escapeHtml(folderName)}/${escapeHtml(file)}</div>
+            <button class="btn btn-secondary btn-sm" type="button" onclick="openDatabaseDir('${folderName}', this)">Buka Folder</button>
+          </div>`
+          : `
+          <div class="video-viewport">
+            <video controls preload="metadata" playsinline title="${escapeHtml(file)}">
+              <source src="/api/products/${currentSlug}/media/${kind}/${encodeURIComponent(file)}" type="video/mp4">
+              Browser tidak mendukung preview video.
+            </video>
+          </div>`;
+
         card.innerHTML = `
           <div class="clip-card-header">
             <div>
@@ -1559,12 +2004,7 @@
             <span class="clip-badge-status ${badgeClass}">${escapeHtml(status)}</span>
           </div>
           ${errorHtml}
-          <div class="video-viewport">
-            <video controls preload="metadata" playsinline title="${escapeHtml(file)}">
-              <source src="/api/products/${currentSlug}/media/${kind}/${encodeURIComponent(file)}" type="video/mp4">
-              Browser tidak mendukung preview video.
-            </video>
-          </div>
+          ${mediaHtml}
         `;
         container.appendChild(card);
       }
@@ -1587,9 +2027,13 @@
         return;
       }
 
+      const globalVolume = Number(product?.music?.volume);
+      const trackSettingsSupported = serverCapabilities.musicTrackSettings === true;
+      const trackDisabled = trackSettingsSupported ? "" : " disabled";
       for (const [file, item] of items) {
         const card = document.createElement("div");
         card.className = "music-card";
+        card.dataset.musicFile = file;
 
         const status = item.status || "ERROR";
         const badgeClass = status === "READY"
@@ -1603,6 +2047,40 @@
           ? `<div class="clip-error" role="note"><strong>Error:</strong> ${escapeHtml(item.error)}</div>`
           : "";
 
+        const trackSettings = product?.music?.tracks?.[file] || {};
+        const volumeValue = trackSettings.volume !== null && trackSettings.volume !== undefined &&
+          Number.isFinite(Number(trackSettings.volume))
+          ? String(trackSettings.volume)
+          : "";
+        const volumePlaceholder = Number.isFinite(globalVolume) ? `default ${globalVolume.toFixed(2)}` : "default";
+        const startValue = trackSettings.startSeconds !== null && trackSettings.startSeconds !== undefined &&
+          Number.isFinite(Number(trackSettings.startSeconds))
+          ? String(trackSettings.startSeconds)
+          : "0";
+        const endValue = trackSettings.endSeconds === null || trackSettings.endSeconds === undefined
+          ? ""
+          : String(trackSettings.endSeconds);
+        const hasDuration = Number.isFinite(rawDuration) && rawDuration > 0;
+        const maxTime = hasDuration ? `max="${rawDuration.toFixed(2)}"` : "";
+        const sliderStart = clampNumber(Number(startValue), 0, hasDuration ? rawDuration : 0);
+        const sliderEnd = clampNumber(
+          Math.max(endValue === "" ? rawDuration : Number(endValue), sliderStart + 0.1),
+          0,
+          hasDuration ? rawDuration : 0
+        );
+        const rangeHtml = hasDuration
+          ? `
+          <div class="music-range-labels">
+            <span data-range-start-label>Mulai ${sliderStart.toFixed(1)}s</span>
+            <span data-range-end-label>Selesai ${sliderEnd.toFixed(1)}s</span>
+          </div>
+          <div class="music-range" data-music-range>
+            <div class="music-range-track"><div class="music-range-fill"></div></div>
+            <input type="range" data-range-start aria-label="Mulai potongan backsound" min="0" max="${rawDuration.toFixed(2)}" step="0.1" value="${sliderStart.toFixed(1)}"${trackDisabled}>
+            <input type="range" data-range-end aria-label="Selesai potongan backsound" min="0" max="${rawDuration.toFixed(2)}" step="0.1" value="${sliderEnd.toFixed(1)}"${trackDisabled}>
+          </div>`
+          : "";
+
         card.innerHTML = `
           <div class="music-card-main">
             <div>
@@ -1612,8 +2090,21 @@
             <span class="clip-badge-status ${badgeClass}">${escapeHtml(status)}</span>
           </div>
           ${errorHtml}
+          ${rangeHtml}
           <audio class="music-audio" controls preload="none" src="/api/products/${currentSlug}/media/music/${encodeURIComponent(file)}"></audio>
+          <div class="music-track-settings"${trackSettingsSupported ? "" : ` title="Setelan per track membutuhkan restart aplikasi"`}>
+            <label>Volume
+              <input type="number" data-track-volume min="0" max="1" step="0.01" value="${escapeHtml(volumeValue)}" placeholder="${escapeHtml(volumePlaceholder)}"${trackDisabled}>
+            </label>
+            <label>Mulai (dtk)
+              <input type="number" data-track-start min="0" step="0.1" ${maxTime} value="${escapeHtml(startValue)}"${trackDisabled}>
+            </label>
+            <label>Selesai (dtk)
+              <input type="number" data-track-end min="0" step="0.1" ${maxTime} value="${escapeHtml(endValue)}" placeholder="akhir track"${trackDisabled}>
+            </label>
+          </div>
           <div class="music-card-actions">
+            <button class="btn btn-secondary btn-sm" type="button" data-reset-track${trackDisabled}>Reset</button>
             <button class="btn btn-secondary btn-sm" type="button" data-toggle>${item.enabled ? "Nonaktifkan" : "Aktifkan"}</button>
           </div>
         `;
@@ -1622,8 +2113,99 @@
         if (toggle) {
           toggle.addEventListener("click", () => toggleMusicAsset(file, !item.enabled, toggle));
         }
+        const reset = card.querySelector("[data-reset-track]");
+        if (reset) {
+          reset.addEventListener("click", () => {
+            card.querySelector("[data-track-volume]").value = "";
+            card.querySelector("[data-track-start]").value = "0";
+            card.querySelector("[data-track-end]").value = "";
+            const startInput = card.querySelector("[data-track-start]");
+            const endInput = card.querySelector("[data-track-end]");
+            if (startInput) startInput.dispatchEvent(new Event("input"));
+            if (endInput) endInput.dispatchEvent(new Event("input"));
+            showToast(`Setelan track ${file} dikosongkan. Klik Simpan Pengaturan untuk menerapkan.`, "info");
+          });
+        }
+        setupMusicRange(card, rawDuration);
         container.appendChild(card);
       }
+    }
+
+    function setupMusicRange(card, duration) {
+      const range = card.querySelector("[data-music-range]");
+      if (!range) return;
+
+      const max = Number(duration);
+      if (!Number.isFinite(max) || max <= 0) return;
+
+      const startRange = range.querySelector("[data-range-start]");
+      const endRange = range.querySelector("[data-range-end]");
+      const startNumber = card.querySelector("[data-track-start]");
+      const endNumber = card.querySelector("[data-track-end]");
+      const startLabel = card.querySelector("[data-range-start-label]");
+      const endLabel = card.querySelector("[data-range-end-label]");
+      if (!startRange || !endRange || !startNumber || !endNumber) return;
+
+      const gap = 0.1;
+      const format = (value) => `${value.toFixed(1)}s`;
+
+      function updateVisual() {
+        const start = clampNumber(Number(startRange.value), 0, max);
+        const end = clampNumber(Number(endRange.value), 0, max);
+        const startPct = (start / max) * 100;
+        const endPct = (end / max) * 100;
+        range.style.setProperty("--range-start", `${startPct}%`);
+        range.style.setProperty("--range-end", `${endPct}%`);
+        if (startLabel) startLabel.textContent = `Mulai ${format(start)}`;
+        if (endLabel) endLabel.textContent = `Selesai ${format(end)}`;
+      }
+
+      function syncFromNumbers() {
+        const rawStart = Number(startNumber.value);
+        const endText = endNumber.value.trim();
+        const rawEnd = endText === "" ? max : Number(endText);
+
+        let start = Number.isFinite(rawStart) ? clampNumber(rawStart, 0, max) : 0;
+        let end = Number.isFinite(rawEnd) ? clampNumber(rawEnd, 0, max) : max;
+
+        if (end <= start) {
+          if (start + gap <= max) end = start + gap;
+          else start = Math.max(0, end - gap);
+        }
+
+        const startChanged = !Number.isFinite(rawStart) || start !== rawStart;
+        const endChanged = endText !== "" && (!Number.isFinite(rawEnd) || end !== rawEnd);
+        if (startChanged) startNumber.value = start.toFixed(1);
+        if (endChanged) endNumber.value = end >= max - 0.05 ? "" : end.toFixed(1);
+
+        startRange.value = String(start);
+        endRange.value = String(end);
+        updateVisual();
+      }
+
+      function onRangeInput(isStart) {
+        let start = clampNumber(Number(startRange.value), 0, max);
+        let end = clampNumber(Number(endRange.value), 0, max);
+
+        if (isStart) {
+          start = Math.min(start, Math.max(0, end - gap));
+          startRange.value = String(start);
+        } else {
+          end = Math.max(end, Math.min(max, start + gap));
+          endRange.value = String(end);
+        }
+
+        startNumber.value = start.toFixed(1);
+        endNumber.value = end >= max - 0.05 ? "" : end.toFixed(1);
+        updateVisual();
+      }
+
+      startRange.addEventListener("input", () => onRangeInput(true));
+      endRange.addEventListener("input", () => onRangeInput(false));
+      startNumber.addEventListener("input", syncFromNumbers);
+      endNumber.addEventListener("input", syncFromNumbers);
+
+      syncFromNumbers();
     }
 
     async function toggleMusicAsset(file, enabled, button) {
@@ -1672,20 +2254,71 @@
           .join("");
       fixed.value = music.fixedFile || "";
 
+      const testTrack = document.getElementById("musicTestTrack");
+      const previousTestTrack = testTrack.value;
+      const readyTracks = Object.entries(musicAssets || {})
+        .filter(([, item]) => item && item.status === "READY");
+      testTrack.innerHTML = readyTracks.length > 0
+        ? readyTracks.map(([file]) => `<option value="${escapeHtml(file)}">${escapeHtml(file)}</option>`).join("")
+        : `<option value="">Belum ada track READY</option>`;
+
+      const preferredTrack = (music.selection === "fixed" && music.fixedFile &&
+        readyTracks.some(([file]) => file === music.fixedFile))
+        ? music.fixedFile
+        : (readyTracks.some(([file]) => file === previousTestTrack) ? previousTestTrack : (readyTracks[0]?.[0] || ""));
+      testTrack.value = preferredTrack;
+      document.getElementById("btnTestMusic").disabled = readyTracks.length === 0;
+
+      document.getElementById("musicTestResult").hidden = true;
+      document.getElementById("musicTestStatus").textContent = "";
+
+      applyMusicPreviewCapability();
       onMusicSelectionChange();
     }
 
-    async function saveMusicSettings(event) {
-      event.preventDefault();
-      const button = document.getElementById("btnSaveMusic");
-      button.disabled = true;
+    function onMusicVolumeInput(value) {
+      const volume = Number(value);
+      document.getElementById("musicVolumeValue").textContent = Number.isFinite(volume)
+        ? volume.toFixed(2)
+        : "0.12";
+      if (!Number.isFinite(volume)) return;
+      document.querySelectorAll("#listMusic [data-track-volume]").forEach((input) => {
+        input.placeholder = `default ${volume.toFixed(2)}`;
+      });
+    }
 
+    function collectMusicFormSettings() {
       const selection = document.getElementById("musicSelection").value;
       const volume = Number(document.getElementById("musicVolume").value);
       const fadeIn = Number(document.getElementById("musicFadeIn").value);
       const fadeOut = Number(document.getElementById("musicFadeOut").value);
 
-      const music = {
+      const tracks = {};
+      const trackSettingsSupported = serverCapabilities.musicTrackSettings === true;
+      for (const card of trackSettingsSupported ? document.querySelectorAll("#listMusic [data-music-file]") : []) {
+        const file = card.dataset.musicFile;
+        if (!file) continue;
+
+        const volumeRaw = (card.querySelector("[data-track-volume]")?.value || "").trim();
+        const startRaw = (card.querySelector("[data-track-start]")?.value || "").trim();
+        const endRaw = (card.querySelector("[data-track-end]")?.value || "").trim();
+
+        const volumeNumber = volumeRaw === "" ? null : Number(volumeRaw);
+        const startNumber = startRaw === "" ? 0 : Number(startRaw);
+        const endNumber = endRaw === "" ? null : Number(endRaw);
+
+        const trackVolume = volumeNumber !== null && Number.isFinite(volumeNumber)
+          ? Math.max(0, Math.min(1, volumeNumber))
+          : null;
+        const startSeconds = Number.isFinite(startNumber) ? Math.max(0, startNumber) : 0;
+        const endSeconds = endNumber !== null && Number.isFinite(endNumber) ? Math.max(0, endNumber) : null;
+
+        if (trackVolume !== null || startSeconds > 0 || endSeconds !== null) {
+          tracks[file] = { volume: trackVolume, startSeconds, endSeconds };
+        }
+      }
+
+      return {
         enabled: document.getElementById("musicEnabled").checked,
         volume: Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 0.12,
         fadeInSeconds: Number.isFinite(fadeIn) ? Math.max(0, Math.min(10, fadeIn)) : 1,
@@ -1695,7 +2328,32 @@
         fixedFile: selection === "fixed"
           ? (document.getElementById("musicFixedFile").value || null)
           : null,
+        tracks,
       };
+    }
+
+    function findMusicTrackError(tracks) {
+      for (const [file, settings] of Object.entries(tracks || {})) {
+        if (settings.endSeconds !== null && settings.endSeconds !== undefined &&
+            settings.endSeconds <= settings.startSeconds) {
+          return `Track ${file}: detik selesai harus lebih besar dari detik mulai.`;
+        }
+      }
+      return null;
+    }
+
+    async function saveMusicSettings(event) {
+      event.preventDefault();
+      const button = document.getElementById("btnSaveMusic");
+      button.disabled = true;
+
+      const music = collectMusicFormSettings();
+      const trackError = findMusicTrackError(music.tracks);
+      if (trackError) {
+        showToast(trackError, "error");
+        button.disabled = false;
+        return;
+      }
 
       try {
         await api(`/api/products/${currentSlug}`, {
@@ -1706,6 +2364,75 @@
         await loadProductDetails();
       } catch (err) {
         showToast(`Gagal menyimpan pengaturan backsound: ${err.message}`, "error");
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function testMusicPreview() {
+      const button = document.getElementById("btnTestMusic");
+      const status = document.getElementById("musicTestStatus");
+      const result = document.getElementById("musicTestResult");
+      const video = document.getElementById("musicTestVideo");
+      const meta = document.getElementById("musicTestMeta");
+      const track = document.getElementById("musicTestTrack").value;
+
+      if (!currentSlug) {
+        showToast("Pilih produk terlebih dahulu", "error");
+        return;
+      }
+      if (serverCapabilities.musicPreview !== true) {
+        showToast("Tes Hasil belum aktif di server ini. Tutup lalu jalankan ulang Buka_Dashboard.bat.", "warning");
+        return;
+      }
+      if (!track) {
+        showToast("Belum ada backsound READY. Tambahkan file lalu klik Pindai Ulang.", "warning");
+        return;
+      }
+
+      const music = collectMusicFormSettings();
+      const trackError = findMusicTrackError(music.tracks);
+      if (trackError) {
+        showToast(trackError, "error");
+        return;
+      }
+
+      button.disabled = true;
+      status.textContent = "Merender contoh 1 video...";
+      result.hidden = true;
+      video.removeAttribute("src");
+      video.load();
+
+      try {
+        const data = await api(`/api/products/${currentSlug}/music/preview`, {
+          method: "POST",
+          body: { track, music },
+        });
+
+        status.textContent = "Preview siap. Putar video di bawah untuk mendengar hasilnya.";
+        video.src = data.url;
+        const fadeIn = Number(data.music.fadeInSeconds).toFixed(1);
+        const fadeOut = Number(data.music.fadeOutSeconds).toFixed(1);
+        const effectiveVolume = Number(data.music.volume);
+        const defaultVolume = Number(data.music.defaultVolume);
+        const volumeText = `${effectiveVolume.toFixed(2)}${Math.abs(effectiveVolume - defaultVolume) < 0.0001 ? " (default)" : " (track)"}`;
+        const startText = Number(data.music.startSeconds).toFixed(1);
+        const endText = data.music.endSeconds === null || data.music.endSeconds === undefined
+          ? "akhir"
+          : `${Number(data.music.endSeconds).toFixed(1)}s`;
+        meta.textContent = `Track: ${data.track} · ${Number(data.durationSeconds).toFixed(1)} detik · volume ${volumeText} · potong ${startText}s–${endText} · fade ${fadeIn}s/${fadeOut}s`;
+        result.hidden = false;
+        try { await video.play(); } catch (_) { /* autoplay bisa diblokir; user tinggal klik play */ }
+        showToast("Preview backsound berhasil dibuat.", "success");
+      } catch (err) {
+        status.textContent = "";
+        const action = (err.code === "E_NO_MUSIC" || err.code === "E_SCAN_REQUIRED")
+          ? { label: "Pindai Ulang", onClick: () => rescanCurrentProduct() }
+          : null;
+        showToast(`Gagal membuat preview: ${err.message}`, "error", {
+          duration: 12000,
+          ...(action ? { action } : {}),
+        });
       } finally {
         button.disabled = false;
       }
@@ -1850,11 +2577,30 @@
       icon.classList.add("spin");
 
       try {
-        await api(`/api/products/${currentSlug}/scan`, { method: "POST" });
-        showToast("Pemindaian dan normalisasi folder selesai.", "success");
+        const data = await api(`/api/products/${currentSlug}/scan`, { method: "POST" });
+        if (data?.diagnostics) lastDiagnostics = data.diagnostics;
+        const report = data?.report;
+        const missingCount = Number(data?.diagnostics?.missingCount) || 0;
+        if (report) {
+          const seen = (report.folders || []).reduce((n, f) => n + ((f.filesSeen || []).length), 0);
+          if (missingCount > 0) {
+            showToast(`Pemindaian selesai: ${seen} file terbaca, ${missingCount} entri hilang.`, "warning", {
+              duration: 9000,
+              action: { label: "Bersihkan", onClick: () => pruneMissingAssets() },
+            });
+          } else {
+            showToast(`Pemindaian selesai: ${seen} file terbaca, tidak ada entri hilang.`, "success");
+          }
+        } else {
+          showToast("Pemindaian dan normalisasi folder selesai.", "success");
+        }
         await loadProductDetails();
       } catch (err) {
-        showToast(`Gagal memindai folder: ${err.message}`, "error");
+        if (err.code === "E_SCAN_FOLDER_UNREADABLE") {
+          showToast(err.message, "error", { duration: 10000 });
+        } else {
+          showToast(`Gagal memindai folder: ${err.message}`, "error");
+        }
       } finally {
         btn.disabled = false;
         icon.classList.remove("spin");
@@ -2281,6 +3027,12 @@
       } catch (err) {
         showToast(`Gagal membuat produk: ${err.message}`, "error");
       }
+    }
+
+    function clampNumber(value, min, max) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return min;
+      return Math.min(Math.max(number, min), max);
     }
 
     function escapeHtml(str) {

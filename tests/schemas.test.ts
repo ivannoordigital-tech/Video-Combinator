@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   ProductConfigSchema,
   computeSpecHash,
+  computeMusicConfigHash,
   AssetsRegistrySchema,
   ManifestSchema,
   JobSchema,
@@ -44,6 +45,33 @@ describe("T0.2: Zod Schemas Validation", () => {
 
     const hash = computeSpecHash(parsed.video, parsed.audio);
     expect(hash).toHaveLength(12);
+  });
+
+  it("harus memvalidasi setelan volume dan potongan per track backsound", () => {
+    const parsed = ProductConfigSchema.parse({
+      slug: "produk-musik",
+      displayName: "Produk Musik",
+      createdAt: new Date().toISOString(),
+      music: {
+        volume: 0.2,
+        tracks: {
+          "lagu-a.mp3": { volume: 0.45, startSeconds: 12.5, endSeconds: 40 },
+          "lagu-b.mp3": { volume: null, startSeconds: 0, endSeconds: null },
+        },
+      },
+    });
+
+    expect(parsed.music.tracks["lagu-a.mp3"]?.volume).toBe(0.45);
+    expect(parsed.music.tracks["lagu-b.mp3"]?.volume).toBeNull();
+
+    const defaultHash = computeMusicConfigHash(
+      ProductConfigSchema.parse({
+        slug: "produk-musik",
+        displayName: "Produk Musik",
+        createdAt: new Date().toISOString(),
+      }).music
+    );
+    expect(computeMusicConfigHash(parsed.music)).not.toBe(defaultHash);
   });
 
   it("harus menolak slug produk yang berbahaya atau tidak valid", () => {

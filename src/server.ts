@@ -4,16 +4,16 @@ import path from "node:path";
 import http from "node:http";
 import { spawn } from "node:child_process";
 import { FFmpegResolver } from "./core/ffmpeg.js";
-import { ScanEngine } from "./core/scan.js";
+import { ScanEngine, ScanFolderUnreadableError } from "./core/scan.js";
 import { IngestEngine } from "./core/ingest.js";
 import { PlanEngine } from "./core/plan.js";
-import type { PlanResult } from "./core/plan.js";
+import type { PlanResult, PlanCombination } from "./core/plan.js";
 import { RenderEngine } from "./core/render.js";
 import { ManifestManager } from "./core/manifest.js";
 import type { Manifest } from "./schemas/manifest.js";
 import { ReportGenerator } from "./core/report.js";
-import { ProductConfigSchema, ProductConfig, ProductSlugRegex } from "./schemas/product.js";
-import { AssetsRegistrySchema, AssetsRegistry } from "./schemas/assets.js";
+import { ProductConfigSchema, ProductConfig, ProductMusicConfigSchema, ProductSlugRegex } from "./schemas/product.js";
+import { AssetsRegistrySchema, AssetsRegistry, AssetItem } from "./schemas/assets.js";
 import { Job, JobScopeSchema } from "./schemas/job.js";
 
 function findProjectRoot(): string {
@@ -114,6 +114,8 @@ interface ActiveJob {
 const activeJobs = new Map<string, ActiveJob>();
 // Reservasi slug selama perencanaan agar dua POST render tidak lolos bersamaan.
 const pendingRenders = new Set<string>();
+// Reservasi slug selama render preview backsound agar tidak dobel klik.
+const pendingPreviews = new Set<string>();
 const sseClients = new Map<string, Set<Response>>();
 
 function broadcastSSE(slug: string, event: string, data: unknown) {
@@ -172,6 +174,58 @@ function loadRegistry(slug: string): AssetsRegistry {
     return AssetsRegistrySchema.parse(JSON.parse(fs.readFileSync(assetsPath, "utf-8")));
   }
   return { schemaVersion: 1, specHash: "init", assets: { hook: {}, body: {}, cta: {}, music: {} } };
+}
+
+const ASSET_FOLDER_NAMES: Record<"hook" | "body" | "cta" | "music", string> = {
+  hook: "hooks",
+  body: "bodies",
+  cta: "ctas",
+  music: "backsounds",
+};
+
+function getAssetDiagnostics(product: ProductConfig, registry: AssetsRegistry) {
+  const { databaseDir } = getProductPaths(product.slug);
+  const missingByKind: Record<"hook" | "body" | "cta" | "music", number> = {
+    hook: 0,
+    body: 0,
+    cta: 0,
+    music: 0,
+  };
+  const missingKeys: { kind: "hook" | "body" | "cta" | "music"; file: string }[] = [];
+  const folders: { kind: "hook" | "body" | "cta" | "music"; dirPath: string; readable: boolean }[] = [];
+  let readable = true;
+
+  for (const kind of ["hook", "body", "cta", "music"] as const) {
+    const dirPath = path.join(databaseDir, ASSET_FOLDER_NAMES[kind]);
+    let filesOnDisk: Set<string> | null = null;
+    try {
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+      }
+      // Pakai logika yang sama dengan scan/prune: hanya file aset valid yang dihitung.
+      filesOnDisk = new Set(ScanEngine.listAssetFileNames(dirPath, kind));
+      folders.push({ kind, dirPath, readable: true });
+    } catch {
+      readable = false;
+      folders.push({ kind, dirPath, readable: false });
+    }
+
+    for (const file of Object.keys(registry.assets[kind])) {
+      if (filesOnDisk && !filesOnDisk.has(file)) {
+        missingByKind[kind] += 1;
+        missingKeys.push({ kind, file });
+      }
+    }
+  }
+
+  return {
+    readable,
+    databaseDir,
+    missingCount: missingKeys.length,
+    missingByKind,
+    missingKeys,
+    folders,
+  };
 }
 
 // Tulis JSON secara atomik: tmp file di direktori yang sama lalu rename.
@@ -292,6 +346,12 @@ app.get("/api/health", async (req, res) => {
   }
 });
 
+// GET /api/capabilities - UI memakai ini untuk menampilkan fitur yang tersedia
+// di server yang sedang berjalan (mencegah tombol baru memanggil endpoint lama).
+app.get("/api/capabilities", (_req, res) => {
+  res.json({ ok: true, musicPreview: true, musicTrackSettings: true });
+});
+
 // GET /api/products
 app.get("/api/products", (req, res) => {
   const stateRoot = path.join(ROOT_DIR, "state");
@@ -358,7 +418,8 @@ app.get("/api/products/:slug", (req, res) => {
   try {
     ensureAssetFolders(product);
     const registry = loadRegistry(product.slug);
-    res.json({ product, registry });
+    const diagnostics = getAssetDiagnostics(product, registry);
+    res.json({ product, registry, diagnostics });
   } catch (err) {
     sendJsonError(res, 500, "E_READ_FAILED", (err as Error).message);
   }
@@ -443,11 +504,54 @@ app.post("/api/products/:slug/scan", async (req, res) => {
   const product = resolveExistingProduct(req.params.slug, res);
   if (!product) return;
   try {
-    const registry = await ScanEngine.scanProductAssets(ROOT_DIR, product, loadRegistry(product.slug));
+    const { registry, report } = await ScanEngine.scanProductAssetsDetailed(
+      ROOT_DIR,
+      product,
+      loadRegistry(product.slug)
+    );
     writeJsonAtomic(getProductPaths(product.slug).assetsPath, registry);
-    res.json({ ok: true, registry });
+    const diagnostics = getAssetDiagnostics(product, registry);
+    res.json({ ok: true, registry, report, diagnostics });
   } catch (err) {
+    if (err instanceof ScanFolderUnreadableError) {
+      sendJsonError(res, 500, "E_SCAN_FOLDER_UNREADABLE", err.message, {
+        dirPath: err.dirPath,
+        code: err.causeCode,
+      });
+      return;
+    }
     sendJsonError(res, 500, "E_SCAN_FAILED", (err as Error).message);
+  }
+});
+
+// POST /api/products/:slug/assets/prune-missing
+app.post("/api/products/:slug/assets/prune-missing", (req, res) => {
+  const product = resolveExistingProduct(req.params.slug, res);
+  if (!product) return;
+
+  const slug = product.slug;
+  if (activeJobs.has(slug) || pendingRenders.has(slug)) {
+    sendJsonError(res, 409, "E_JOB_RUNNING", "Proses render sedang berlangsung untuk produk ini");
+    return;
+  }
+
+  try {
+    const { registry, removed, skippedKinds } = ScanEngine.pruneMissingAssets(
+      ROOT_DIR,
+      product,
+      loadRegistry(slug)
+    );
+    writeJsonAtomic(getProductPaths(slug).assetsPath, registry);
+    if (removed.length > 0) {
+      console.log(`[prune] ${slug}: ${removed.length} entri hilang dihapus`);
+    }
+    if (skippedKinds.length > 0) {
+      console.log(`[prune] ${slug}: folder dilewati -> ${skippedKinds.join(", ")}`);
+    }
+    const diagnostics = getAssetDiagnostics(product, registry);
+    res.json({ ok: true, removed, skippedKinds, registry, diagnostics });
+  } catch (err) {
+    sendJsonError(res, 500, "E_PRUNE_FAILED", (err as Error).message);
   }
 });
 
@@ -1013,6 +1117,230 @@ app.get("/api/products/:slug/media/:kind/:file", (req, res) => {
     "Content-Length": fileSize,
     "Accept-Ranges": "bytes",
     "Content-Type": contentType,
+  });
+});
+
+// --- Preview backsound (Tes Hasil) ---
+
+function firstReadyAsset(bucket: Record<string, AssetItem>): [string, AssetItem] | null {
+  return Object.entries(bucket).find(([, item]) => item.enabled && item.status === "READY") ?? null;
+}
+
+/** Simpan beberapa preview terakhir; file lama yang masih diputar browser dilewati jika terkunci. */
+function cleanupOldPreviews(dir: string, keepName: string): void {
+  try {
+    const files = fs.readdirSync(dir)
+      .filter((name) => /^preview(?:-[a-z0-9-]+)?\.mp4$/i.test(name) && name !== keepName)
+      .map((name) => {
+        try {
+          return { name, mtimeMs: fs.statSync(path.join(dir, name)).mtimeMs };
+        } catch {
+          return null;
+        }
+      })
+      .filter((entry): entry is { name: string; mtimeMs: number } => entry !== null)
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+    for (const entry of files.slice(4)) {
+      try {
+        fs.rmSync(path.join(dir, entry.name), { force: true });
+      } catch {
+        // Biarkan jika browser masih memegang file.
+      }
+    }
+  } catch {
+    // Cleanup best-effort.
+  }
+}
+
+// POST /api/products/:slug/music/preview
+// Render satu video contoh dengan konfigurasi backsound dari form (tanpa menyimpan).
+app.post("/api/products/:slug/music/preview", async (req, res) => {
+  const product = resolveExistingProduct(req.params.slug, res);
+  if (!product) return;
+
+  const slug = product.slug;
+  if (activeJobs.has(slug) || pendingRenders.has(slug)) {
+    sendJsonError(res, 409, "E_JOB_RUNNING", "Tunggu render yang sedang berjalan selesai sebelum tes backsound");
+    return;
+  }
+  if (pendingPreviews.has(slug)) {
+    sendJsonError(res, 409, "E_PREVIEW_RUNNING", "Tes backsound sedang diproses. Tunggu sebentar.");
+    return;
+  }
+
+  pendingPreviews.add(slug);
+  try {
+    const registry = loadRegistry(slug);
+    const musicTracks = Object.entries(registry.assets.music)
+      .filter(([, item]) => item.status === "READY");
+
+    if (musicTracks.length === 0) {
+      sendJsonError(
+        res,
+        422,
+        "E_NO_MUSIC",
+        "Belum ada backsound READY. Tambahkan file lalu klik Pindai Ulang."
+      );
+      return;
+    }
+
+    const requestedTrack = typeof req.body?.track === "string" ? req.body.track : "";
+    let selectedTrack: [string, AssetItem] | undefined;
+    if (requestedTrack) {
+      selectedTrack = musicTracks.find(([file]) => file === requestedTrack);
+      if (!selectedTrack) {
+        sendJsonError(res, 400, "E_VALIDATION_ERROR", "Track backsound tidak ditemukan atau belum READY");
+        return;
+      }
+    } else {
+      const fixed = product.music.fixedFile
+        ? musicTracks.find(([file]) => file === product.music.fixedFile)
+        : undefined;
+      selectedTrack = fixed ?? musicTracks[0]!;
+    }
+
+    const hook = firstReadyAsset(registry.assets.hook);
+    const body = firstReadyAsset(registry.assets.body);
+    const cta = firstReadyAsset(registry.assets.cta);
+    if (!hook || !body || !cta) {
+      sendJsonError(res, 422, "E_NO_ASSETS", "Butuh minimal satu hook, body, dan CTA READY untuk tes backsound");
+      return;
+    }
+
+    const music = ProductMusicConfigSchema.parse({
+      ...product.music,
+      ...(req.body?.music && typeof req.body.music === "object" && !Array.isArray(req.body.music)
+        ? req.body.music
+        : {}),
+      // Preview selalu mencampur backsound, walaupun checkbox "Aktifkan" sedang dimatikan.
+      enabled: true,
+    });
+    const previewProduct = ProductConfigSchema.parse({ ...product, music });
+
+    const combo: PlanCombination = {
+      key: "preview",
+      filename: "preview.mp4",
+      hookFile: hook[0],
+      bodyFile: body[0],
+      ctaFile: cta[0],
+      hookItem: hook[1],
+      bodyItem: body[1],
+      ctaItem: cta[1],
+      status: "QUEUED",
+      musicFile: selectedTrack[0],
+      musicItem: selectedTrack[1],
+    };
+
+    const previewDir = path.join(ROOT_DIR, "cache", slug, "preview");
+    fs.mkdirSync(previewDir, { recursive: true });
+    const previewName = `preview-${Date.now()}-${Math.random().toString(16).slice(2, 8)}.mp4`;
+    const outputPath = path.join(previewDir, previewName);
+
+    const engine = new RenderEngine();
+    const result = await engine.renderPreview(ROOT_DIR, previewProduct, combo, outputPath);
+    cleanupOldPreviews(previewDir, previewName);
+
+    res.json({
+      ok: true,
+      url: `/api/products/${slug}/music/preview/${encodeURIComponent(previewName)}?t=${Date.now()}`,
+      track: selectedTrack[0],
+      durationSeconds: result.durationSeconds,
+      sizeBytes: result.sizeBytes,
+      combo: { hook: hook[0], body: body[0], cta: cta[0] },
+      music: {
+        volume: music.tracks[selectedTrack[0]]?.volume ?? music.volume,
+        defaultVolume: music.volume,
+        startSeconds: music.tracks[selectedTrack[0]]?.startSeconds ?? 0,
+        endSeconds: music.tracks[selectedTrack[0]]?.endSeconds ?? null,
+        fadeInSeconds: music.fadeInSeconds,
+        fadeOutSeconds: music.fadeOutSeconds,
+        loop: music.loop,
+      },
+    });
+  } catch (err) {
+    sendJsonError(res, 500, "E_PREVIEW_FAILED", (err as Error).message);
+  } finally {
+    pendingPreviews.delete(slug);
+  }
+});
+
+// GET /api/products/:slug/music/preview/:file
+app.get("/api/products/:slug/music/preview/:file", (req, res) => {
+  const rawSlug = req.params.slug;
+  if (!ProductSlugRegex.test(rawSlug)) {
+    sendJsonError(res, 400, "E_PATH_INVALID", "Slug produk tidak valid");
+    return;
+  }
+
+  let product: ProductConfig;
+  try {
+    product = loadProduct(rawSlug);
+  } catch {
+    sendJsonError(res, 404, "E_NOT_FOUND", `Produk tidak ditemukan: ${rawSlug}`);
+    return;
+  }
+
+  const rawFile = req.params.file;
+  if (!rawFile || !/^preview(?:-[a-z0-9-]+)?\.mp4$/i.test(rawFile)) {
+    sendJsonError(res, 400, "E_PATH_INVALID", "Nama file preview tidak valid");
+    return;
+  }
+
+  const previewDir = path.resolve(ROOT_DIR, "cache", product.slug, "preview");
+  const filePath = path.resolve(previewDir, rawFile);
+  if (!filePath.startsWith(previewDir + path.sep)) {
+    sendJsonError(res, 400, "E_PATH_INVALID", "Path preview tidak valid");
+    return;
+  }
+
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(filePath);
+  } catch {
+    sendJsonError(res, 404, "E_NOT_FOUND", "Preview backsound belum dibuat");
+    return;
+  }
+  if (!stat.isFile()) {
+    sendJsonError(res, 404, "E_NOT_FOUND", "Preview backsound tidak ditemukan");
+    return;
+  }
+
+  const fileSize = stat.size;
+  const rangeHeader = req.headers.range;
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Accept-Ranges", "bytes");
+
+  if (typeof rangeHeader === "string" && rangeHeader !== "") {
+    const parsedRange = parseRangeHeader(rangeHeader, fileSize);
+    if (!parsedRange) {
+      res.setHeader("Content-Range", `bytes */${fileSize}`);
+      sendJsonError(res, 416, "E_RANGE_INVALID", "Rentang byte tidak valid");
+      return;
+    }
+
+    const { start, end } = parsedRange;
+    streamFileToResponse(
+      res,
+      filePath,
+      206,
+      {
+        "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+        "Accept-Ranges": "bytes",
+        "Content-Length": end - start + 1,
+        "Content-Type": "video/mp4",
+        "Cache-Control": "no-store",
+      },
+      { start, end }
+    );
+    return;
+  }
+
+  streamFileToResponse(res, filePath, 200, {
+    "Content-Length": fileSize,
+    "Accept-Ranges": "bytes",
+    "Content-Type": "video/mp4",
+    "Cache-Control": "no-store",
   });
 });
 

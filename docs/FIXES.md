@@ -39,6 +39,9 @@ Dokumen ini merangkum perubahan besar pada branch `fix/audit-2026-11`. Fokus per
 - Cache spesifikasi lama untuk sumber yang sama (`sha8` dan slug) dibersihkan, hanya di dalam folder ingest produk tersebut.
 - Kompatibilitas cache lama: nama lama tanpa `specHash` tetap dibuat sebagai alias hardlink (fallback copy) ke file kanonik terbaru. Tujuannya agar kode atau cache lama tidak langsung pecah. Alias bersifat best-effort; jika file terkunci, alias lama dibiarkan dan render memakai nama kanonik.
 - Migrasi setelah update: jika cache kanonik `specHash` belum ada, endpoint render menolak dengan `422 E_SCAN_REQUIRED` dan tidak menulis entri FAILED. Klik **Pindai Ulang** sekali, lalu render lagi.
+- Guard folder tidak terbaca: jika `readdir` folder database gagal (`ENOENT/ENOTDIR/EACCES/EPERM`, drive offline, dsb.), scan dibatalkan dengan `500 E_SCAN_FOLDER_UNREADABLE` dan `assets.json` tidak ditulis. Ini mencegah semua entri menjadi ERROR palsu saat drive/OneDrive sementara tidak terbaca.
+- Entri yang filenya hilang ditandai `ERROR` dengan pesan yang menjelaskan penyebab dan opsi perbaikan; entri tidak dihapus otomatis saat scan. Endpoint `POST /api/products/:slug/assets/prune-missing` menghapus entri hilang secara eksplisit, diblokir saat render berjalan (`409 E_JOB_RUNNING`), dan melewati kind yang foldernya tidak ada/tidak terbaca (entrinya dipertahankan dan dilaporkan lewat `skippedKinds`).
+- `POST /api/products/:slug/scan` mengembalikan `report` dan `diagnostics` (aditif). `GET /api/products/:slug` menyertakan `diagnostics` berisi `readable`, `databaseDir`, `missingCount`, `missingByKind`, `missingKeys`, dan `folders[]`.
 
 ## 5. Verifikasi output DONE
 
@@ -65,7 +68,7 @@ Dokumen ini merangkum perubahan besar pada branch `fix/audit-2026-11`. Fokus per
 ## 8. Endpoint folder
 
 - `POST /api/products/:slug/open-output` membuka folder output produk.
-- `POST /api/products/:slug/open-database?kind=hooks|bodies|ctas` membuka subfolder database. Nilai `kind` yang tidak valid ditolak `400 E_VALIDATION_ERROR`.
+- `POST /api/products/:slug/open-database?kind=hooks|bodies|ctas|backsounds` membuka subfolder database. Nilai `kind` yang tidak valid ditolak `400 E_VALIDATION_ERROR`.
 - Folder yang tidak ada atau bukan direktori menghasilkan `404 E_PATH_INVALID`.
 - Keberhasilan ditentukan dari event `spawn` proses Explorer, bukan exit code. Ada timeout 2 detik dan dedupe 1 detik untuk klik ganda.
 - Kegagalan membuka Explorer menghasilkan `500 E_OPEN_FAILED`. Percobaan ulang diizinkan segera setelah gagal.
@@ -91,7 +94,7 @@ Dokumen ini merangkum perubahan besar pada branch `fix/audit-2026-11`. Fokus per
 | 416 | `E_RANGE_INVALID` | Header Range tidak valid atau di luar ukuran file |
 | 422 | `E_LIMIT_EXCEEDED`, `E_NO_ITEMS`, `E_SCAN_REQUIRED` | Kombinasi melebihi batas, tidak ada item baru, atau cache normalisasi belum siap |
 | 200 | `-` | `PATCH /api/products/:slug` (music) dan `PATCH /api/products/:slug/assets/:kind/:file` (enable/disable) berhasil |
-| 500 | `E_*` spesifik | Kegagalan server, scan, plan, render, report, atau buka folder |
+| 500 | `E_*` spesifik | Kegagalan server, scan, plan, render, report, prune, atau buka folder (`E_SCAN_FOLDER_UNREADABLE` bila folder database tidak terbaca) |
 
 Semua error API memakai bentuk JSON yang sama: `{ "error": { "code": "...", "message": "...", "details": ... } }`.
 
@@ -103,8 +106,11 @@ Semua error API memakai bentuk JSON yang sama: `{ "error": { "code": "...", "mes
 - Satu track dipilih per output: `rotate`, `hash`, atau `fixed` (di `product.json` bagian `music`).
 - Render memakai dua pass: concat video/audio dengan stream-copy, lalu mix backsound dengan `-c:v copy`. Video tidak di-encode ulang.
 - Volume default `0.12`, fade in/out 1 detik, loop aktif. Nilai dapat diubah dari panel Backsound.
+- Override per track disimpan di `music.tracks[<nama-file>]`: `volume` (null = default global), `startSeconds`, dan `endSeconds` (null = sampai akhir track). Potongan diterapkan dengan `atrim`; jika `loop` aktif, potongan diulang memakai `aloop`. Perubahan override ikut masuk `musicConfigHash` sehingga output lama menjadi `STALE`.
+- UI menyediakan slider dua handle di atas pemutar audio per track; slider dan kolom angka Mulai/Selesai saling sinkron. Handle start tidak bisa melewati handle end.
 - Manifest mencatat `music`, `musicFingerprint`, dan `musicConfigHash`. Perubahan track/konfigurasi membuat output lama `STALE`.
 - API baru: `PATCH /api/products/:slug` untuk konfigurasi music dan `PATCH /api/products/:slug/assets/:kind/:file` untuk enable/disable aset.
+- Preview: `POST /api/products/:slug/music/preview` merender satu kombinasi contoh ke `cache/<slug>/preview/preview-<timestamp>.mp4` tanpa manifest. Body berisi `track` dan `music` (nilai form yang belum tentu disimpan). File diputar lewat `GET /api/products/:slug/music/preview/:file` dengan dukungan Range. Nama unik mencegah file yang sedang diputar tertimpa; maksimal 5 preview terakhir disimpan.
 - Media audio dapat diputar lewat `GET /api/products/:slug/media/music/:file` dengan Content-Type sesuai ekstensi.
 
 ## Verifikasi manual singkat

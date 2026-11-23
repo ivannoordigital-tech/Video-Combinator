@@ -24,7 +24,7 @@
         "durationSeconds": 3,
         "origin": "scan",
         "status": "READY",
-        "ingestedAt": "2026-11-17T06:14:54.786Z",
+        "ingestedAt": "2026-11-17T06:35:08.209Z",
         "error": null
       },
       "hook3.mp4": {
@@ -76,6 +76,18 @@
         "status": "READY",
         "ingestedAt": "2026-11-17T06:14:58.834Z",
         "error": null
+      },
+      "hook2 test body.mp4": {
+        "slug": "hook2-test-body",
+        "enabled": true,
+        "sha256": "53fd5c632947d84c86ba1fa7ca2d5712b8504c98950d1ed71c2c240496960d99",
+        "sizeBytes": 142355,
+        "mtimeMs": 1794895957287.2769,
+        "durationSeconds": 3,
+        "origin": "scan",
+        "status": "READY",
+        "ingestedAt": "2026-11-17T06:34:22.303Z",
+        "error": null
       }
     },
     "cta": {
@@ -113,6 +125,56 @@
         "origin": "scan",
         "status": "READY",
         "ingestedAt": "2026-11-17T06:15:02.184Z",
+        "error": null
+      },
+      "cta test 2.mp4": {
+        "slug": "cta-test-2",
+        "enabled": true,
+        "sha256": "db674cdc2546c84fadc36aabf3e451073299955491ac44f98298ef71e3e840b6",
+        "sizeBytes": 146055,
+        "mtimeMs": 1794895957958.1558,
+        "durationSeconds": 3,
+        "origin": "scan",
+        "status": "READY",
+        "ingestedAt": "2026-11-17T07:56:16.601Z",
+        "error": null
+      }
+    },
+    "music": {
+      "bensound-beyourself.mp3": {
+        "slug": "bensound-beyourself",
+        "enabled": true,
+        "sha256": "71ed7cd44f69a1341033c282485ab2484ad1a715e45ee294238f23be9ea5c6c7",
+        "sizeBytes": 3708439,
+        "mtimeMs": 1795404075320.2698,
+        "durationSeconds": 153.835104,
+        "origin": "scan",
+        "status": "READY",
+        "ingestedAt": "2026-11-23T03:25:39.950Z",
+        "error": null
+      },
+      "bensound-hearty.mp3": {
+        "slug": "bensound-hearty",
+        "enabled": true,
+        "sha256": "178f42f251a11c676ed5798e2222cc78c10843284271d07718e591c0902e25dc",
+        "sizeBytes": 3704038,
+        "mtimeMs": 1795404082291.9722,
+        "durationSeconds": 153.65225,
+        "origin": "scan",
+        "status": "READY",
+        "ingestedAt": "2026-11-23T03:25:40.108Z",
+        "error": null
+      },
+      "bensound-longnight.mp3": {
+        "slug": "bensound-longnight",
+        "enabled": true,
+        "sha256": "bc6ae6565c68af9a43e221b60e5e03c53ac5602ae5d214d40f92bca41b55624e",
+        "sizeBytes": 4183040,
+        "mtimeMs": 1795404088538.4963,
+        "durationSeconds": 173.609813,
+        "origin": "scan",
+        "status": "READY",
+        "ingestedAt": "2026-11-23T03:25:40.271Z",
         "error": null
       }
     }

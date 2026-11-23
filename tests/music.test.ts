@@ -190,4 +190,52 @@ describe("Backsound Opsi A: scan, plan, mix", () => {
     expect(nextPlan.counts.done).toBe(1);
     expect(nextPlan.counts.queued).toBe(0);
   }, 180_000);
+
+  it("render preview menghasilkan satu video contoh tanpa menyentuh manifest", async () => {
+    const hook = Object.entries(registry.assets.hook)[0]!;
+    const body = Object.entries(registry.assets.body)[0]!;
+    const cta = Object.entries(registry.assets.cta)[0]!;
+    const music = Object.entries(registry.assets.music)[0]!;
+    const previewPath = path.join(TEST_ROOT, "cache", product.slug, "preview", "preview.mp4");
+
+    const previewProduct = ProductConfigSchema.parse({
+      ...product,
+      music: {
+        ...product.music,
+        volume: 0.12,
+        tracks: {
+          [music[0]]: { volume: 0.35, startSeconds: 0.5, endSeconds: 1.5 },
+        },
+      },
+    });
+    expect(computeMusicConfigHash(previewProduct.music)).not.toBe(
+      computeMusicConfigHash(product.music)
+    );
+
+    const result = await new RenderEngine().renderPreview(
+      TEST_ROOT,
+      previewProduct,
+      {
+        key: "preview",
+        filename: "preview.mp4",
+        hookFile: hook[0],
+        bodyFile: body[0],
+        ctaFile: cta[0],
+        hookItem: hook[1],
+        bodyItem: body[1],
+        ctaItem: cta[1],
+        status: "QUEUED",
+        musicFile: music[0],
+        musicItem: music[1],
+      },
+      previewPath
+    );
+
+    expect(fs.existsSync(previewPath)).toBe(true);
+    expect(result.sizeBytes).toBeGreaterThan(50_000);
+    const probe = await VideoProbe.probeFile(previewPath);
+    expect(probe.videoStream?.width).toBe(1080);
+    expect(probe.audioStream?.codec_name).toBe("aac");
+    expect(probe.durationSeconds).toBeGreaterThan(5.5);
+  }, 180_000);
 });

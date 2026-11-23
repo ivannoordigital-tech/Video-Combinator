@@ -29,6 +29,17 @@ export const ProductAudioConfigSchema = z.object({
 export const MusicSelectionSchema = z.enum(["rotate", "hash", "fixed"]);
 export type MusicSelection = z.infer<typeof MusicSelectionSchema>;
 
+/** Setelan khusus per file backsound. Nilai null berarti memakai default global. */
+export const MusicTrackSettingsSchema = z.object({
+  /** null = pakai product.music.volume. */
+  volume: z.number().min(0).max(1).nullable().default(null),
+  /** Detik mulai di dalam track. */
+  startSeconds: z.number().min(0).default(0),
+  /** null = sampai akhir track. */
+  endSeconds: z.number().min(0).nullable().default(null),
+});
+export type MusicTrackSettings = z.infer<typeof MusicTrackSettingsSchema>;
+
 export const ProductMusicConfigSchema = z.object({
   enabled: z.boolean().default(true),
   /** Volume linear 0..1, default 0.12 (sekitar -18 dB). */
@@ -38,6 +49,8 @@ export const ProductMusicConfigSchema = z.object({
   loop: z.boolean().default(true),
   selection: MusicSelectionSchema.default("rotate"),
   fixedFile: z.string().nullable().default(null),
+  /** Override per file: volume, detik mulai, dan detik selesai. */
+  tracks: z.record(z.string(), MusicTrackSettingsSchema).default({}),
 });
 
 export const ProductRenderConfigSchema = z.object({
@@ -91,7 +104,19 @@ export function computeSpecHash(video: ProductVideoConfig, audio: ProductAudioCo
  * volume/fade/selection tanpa mengubah specHash video/audio.
  */
 export function computeMusicConfigHash(music: ProductMusicConfig): string {
-  const payload = JSON.stringify({
+  // Urutkan key track agar urutan objek di product.json tidak mengubah hash.
+  const tracks = Object.keys(music.tracks)
+    .sort()
+    .map((file) => [
+      file,
+      {
+        volume: music.tracks[file]?.volume ?? null,
+        startSeconds: music.tracks[file]?.startSeconds ?? 0,
+        endSeconds: music.tracks[file]?.endSeconds ?? null,
+      },
+    ]);
+
+  const payload: Record<string, unknown> = {
     enabled: music.enabled,
     volume: music.volume,
     fadeInSeconds: music.fadeInSeconds,
@@ -99,6 +124,10 @@ export function computeMusicConfigHash(music: ProductMusicConfig): string {
     loop: music.loop,
     selection: music.selection,
     fixedFile: music.fixedFile,
-  });
-  return createHash("sha256").update(payload).digest("hex").slice(0, 12);
+  };
+  // Pertahankan hash lama untuk produk yang belum punya override per track,
+  // supaya upgrade tidak menandai semua output lama STALE.
+  if (tracks.length > 0) payload.tracks = tracks;
+
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 12);
 }

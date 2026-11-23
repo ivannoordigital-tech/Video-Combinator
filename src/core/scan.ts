@@ -5,6 +5,7 @@ import { ProductConfig, computeSpecHash } from "../schemas/product.js";
 import { NamingUtils } from "./naming.js";
 import { IngestEngine } from "./ingest.js";
 import { FingerprintService } from "./fingerprint.js";
+import { AUDIO_EXTENSIONS } from "./mediaFormats.js";
 
 export interface ScanSkippedFile {
   file: string;
@@ -74,7 +75,6 @@ export class ScanEngine {
     cta: "ctas",
     music: "backsounds",
   };
-  private static readonly AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".m4a", ".aac", ".flac"]);
 
   /**
    * Cek magic bytes untuk memastikan file benar-benar MP4/QuickTime (offset 4 adalah 'ftyp').
@@ -145,7 +145,7 @@ export class ScanEngine {
       }
 
       const ext = path.extname(file).toLowerCase();
-      const supported = audioAllowed ? this.AUDIO_EXTENSIONS.has(ext) : ext === ".mp4";
+      const supported = audioAllowed ? AUDIO_EXTENSIONS.has(ext) : ext === ".mp4";
       if (!supported) {
         skipped.push({ file, reason: "ext" });
         continue;

@@ -6,6 +6,7 @@ import { ProductConfig, computeSpecHash, computeMusicConfigHash } from "../schem
 import { JobScope } from "../schemas/job.js";
 import { NamingUtils } from "./naming.js";
 import { OutputVerifier, VerificationResult, MIN_OUTPUT_BYTES, isMp4StructurallyIntact } from "./verify.js";
+import { AUDIO_EXTENSIONS } from "./mediaFormats.js";
 
 export interface PlanCombination {
   key: string;
@@ -191,10 +192,9 @@ export class PlanEngine {
     const musicFolder = path.join(productRoot, "database", product.slug, "backsounds");
     let hasMusicFiles = false;
     try {
-      const audioExtensions = new Set([".mp3", ".wav", ".m4a", ".aac", ".flac"]);
       hasMusicFiles = fs
         .readdirSync(musicFolder)
-        .some((file) => audioExtensions.has(path.extname(file).toLowerCase()));
+        .some((file) => AUDIO_EXTENSIONS.has(path.extname(file).toLowerCase()));
     } catch {
       // Folder backsounds belum ada.
     }

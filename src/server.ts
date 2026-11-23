@@ -1085,7 +1085,9 @@ app.get("/api/products/:slug/media/:kind/:file", (req, res) => {
     ".aac": "audio/aac",
     ".flac": "audio/flac",
   };
-  const contentType = audioContentTypes[ext] ?? "video/mp4";
+  // Backsound boleh berupa audio dalam kontainer MP4; kirim sebagai audio/mp4
+  // agar browser memutarnya lewat elemen <audio>. Folder video tetap video/mp4.
+  const contentType = kind === "music" ? (audioContentTypes[ext] ?? "audio/mp4") : "video/mp4";
   const rangeHeader = req.headers.range;
 
   if (typeof rangeHeader === "string" && rangeHeader !== "") {

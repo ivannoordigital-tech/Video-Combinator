@@ -131,7 +131,7 @@ Ringkasan perubahan teknis dan langkah verifikasi ada di [docs/FIXES.md](docs/FI
 
 ## Backsound (Opsional)
 
-Simpan file audio ke `database/<produk>/backsounds/` dengan format `.mp3`, `.wav`, `.m4a`, `.aac`, atau `.flac`, lalu klik **Pindai Ulang**. Panel **Backsound** di dashboard menampilkan track, preview audio, dan pengaturan volume, fade in/out, loop, serta mode pemilihan track.
+Simpan file audio ke `database/<produk>/backsounds/` dengan format `.mp3`, `.wav`, `.m4a`, `.aac`, `.flac`, atau `.mp4` (audio dalam kontainer MP4 juga diterima; cukup stream audionya yang dipakai), lalu klik **Pindai Ulang**. Panel **Backsound** di dashboard menampilkan track, preview audio, dan pengaturan volume, fade in/out, loop, serta mode pemilihan track.
 
 - Satu track dipilih otomatis per output. Jumlah kombinasi tetap `hooks x bodies x ctas`, tidak dikali jumlah backsound.
 - Mode `rotate` membagi track bergiliran untuk output baru, `hash` memilih stabil berdasarkan kombinasi, dan `fixed` memakai satu track tetap.

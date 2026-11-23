@@ -135,8 +135,8 @@ Simpan file audio ke `database/<produk>/backsounds/` dengan format `.mp3`, `.wav
 
 - Satu track dipilih otomatis per output. Jumlah kombinasi tetap `hooks x bodies x ctas`, tidak dikali jumlah backsound.
 - Mode `rotate` membagi track bergiliran untuk output baru, `hash` memilih stabil berdasarkan kombinasi, dan `fixed` memakai satu track tetap.
-- Setiap kartu track punya setelan sendiri: **Volume**, **Mulai (detik)**, dan **Selesai (detik)**. Volume kosong berarti memakai volume default global. Kolom selesai kosong berarti memakai track sampai akhir. Jika `loop` aktif, potongan start-selesai diulang sampai durasi video.
-- Di atas pemutar audio tiap track ada slider dua handle untuk memilih potongan awal dan akhir secara visual. Menggeser handle langsung mengisi kolom Mulai/Selesai, dan mengubah kolom angka juga menggeser slider.
+- Setiap kartu track punya setelan ringkas: slider **Volume** dan slider potongan **Mulai/Selesai**, plus tombol **Reset**. Slider volume memakai volume default global sampai digeser. Posisi selesai di ujung kanan berarti memakai track sampai akhir. Jika `loop` aktif, potongan start-selesai diulang sampai durasi video.
+- Slider dua handle di setiap kartu memilih potongan awal dan akhir secara visual; label Mulai/Selesai ikut bergerak mengikuti handle.
 - Gunakan tombol **Tes Hasil (1 video)** untuk merender satu video contoh dengan track pilihan, potongan start/selesai, dan pengaturan volume/fade yang sedang tampil di form. Hasilnya diputar langsung di panel, tidak masuk manifest, dan tidak menambah antrean output. Setelah cocok, klik **Simpan Pengaturan** lalu **Generate**.
 - Video tetap digabung dengan stream-copy. Hanya audio yang di-encode ulang pada pass kedua, jadi kualitas video tidak turun.
 - Jika backsound diaktifkan setelah output lama dibuat, plan menandai output lama sebagai `STALE`. Jalankan cakupan **Stale** atau **Semua** untuk menerapkannya.

@@ -682,16 +682,27 @@
       background-color: var(--surface-muted);
       border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 10px 12px;
+      padding: 8px 10px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
     }
     .music-card-main {
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
+      align-items: center;
       gap: 10px;
+      flex-wrap: wrap;
+    }
+    .music-title-wrap {
+      min-width: 0;
+      flex: 1;
+    }
+    .music-card-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
     }
     .music-name {
       font-size: 0.85rem;
@@ -705,20 +716,56 @@
       margin-top: 3px;
     }
     .music-audio {
-      width: 100%;
-      height: 34px;
+      flex: 1;
+      min-width: 0;
+      height: 32px;
     }
-    .music-card-actions {
+    .music-volume-row {
       display: flex;
-      justify-content: flex-end;
+      align-items: center;
+      gap: 10px;
+    }
+    .music-vol {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 0 0 180px;
+      min-width: 0;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .music-vol input[type="range"] {
+      flex: 1;
+      min-width: 0;
+      margin: 0;
+    }
+    .music-vol-value {
+      color: var(--text);
+      font-weight: 600;
+    }
+    @media (max-width: 520px) {
+      .music-volume-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .music-vol {
+        flex: 1 1 auto;
+      }
+    }
+    .music-range-row {
+      display: flex;
+      align-items: center;
       gap: 8px;
     }
-    .music-range-labels {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
+    .music-range-row .music-range {
+      flex: 1;
+      min-width: 0;
+    }
+    .music-range-label {
       font-size: 0.68rem;
       color: var(--text-muted);
+      white-space: nowrap;
       font-variant-numeric: tabular-nums;
     }
     .music-range {
@@ -802,39 +849,6 @@
     }
     .music-range [data-range-end] {
       z-index: 3;
-    }
-    .music-track-settings {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-    }
-    .music-track-settings label {
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      font-size: 0.7rem;
-      color: var(--text-muted);
-      font-weight: 500;
-    }
-    .music-track-settings input {
-      width: 100%;
-      min-height: 30px;
-      padding: 4px 7px;
-      background-color: var(--surface);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      font-size: 0.78rem;
-      font-variant-numeric: tabular-nums;
-    }
-    .music-track-settings input:focus {
-      outline: none;
-      border-color: var(--border-focus);
-    }
-    @media (max-width: 520px) {
-      .music-track-settings {
-        grid-template-columns: 1fr;
-      }
     }
     .music-settings {
       border-left: 1px solid var(--border);
@@ -1329,7 +1343,7 @@
           </div>
 
           <p class="music-hint">Satu track dipilih otomatis per output. Video tetap lossless; hanya audio yang di-mix ulang.</p>
-          <p class="music-hint">Volume dan potongan start/selesai diatur per kartu track di sebelah kiri. Volume kosong berarti memakai volume default global; kolom selesai kosong berarti sampai akhir track.</p>
+          <p class="music-hint">Volume dan potongan start/selesai diatur per kartu track di sebelah kiri. Slider volume di kartu memakai default global sampai digeser; slider selesai di ujung kanan berarti sampai akhir track.</p>
 
           <div class="music-field">
             <label for="musicTestTrack">Track untuk tes</label>
@@ -2048,11 +2062,10 @@
           : "";
 
         const trackSettings = product?.music?.tracks?.[file] || {};
-        const volumeValue = trackSettings.volume !== null && trackSettings.volume !== undefined &&
-          Number.isFinite(Number(trackSettings.volume))
-          ? String(trackSettings.volume)
-          : "";
-        const volumePlaceholder = Number.isFinite(globalVolume) ? `default ${globalVolume.toFixed(2)}` : "default";
+        const hasCustomVolume = trackSettings.volume !== null && trackSettings.volume !== undefined &&
+          Number.isFinite(Number(trackSettings.volume));
+        const fallbackVolume = Number.isFinite(globalVolume) ? globalVolume : 0.12;
+        const volumeSliderValue = hasCustomVolume ? Number(trackSettings.volume) : fallbackVolume;
         const startValue = trackSettings.startSeconds !== null && trackSettings.startSeconds !== undefined &&
           Number.isFinite(Number(trackSettings.startSeconds))
           ? String(trackSettings.startSeconds)
@@ -2061,7 +2074,6 @@
           ? ""
           : String(trackSettings.endSeconds);
         const hasDuration = Number.isFinite(rawDuration) && rawDuration > 0;
-        const maxTime = hasDuration ? `max="${rawDuration.toFixed(2)}"` : "";
         const sliderStart = clampNumber(Number(startValue), 0, hasDuration ? rawDuration : 0);
         const sliderEnd = clampNumber(
           Math.max(endValue === "" ? rawDuration : Number(endValue), sliderStart + 0.1),
@@ -2070,44 +2082,51 @@
         );
         const rangeHtml = hasDuration
           ? `
-          <div class="music-range-labels">
-            <span data-range-start-label>Mulai ${sliderStart.toFixed(1)}s</span>
-            <span data-range-end-label>Selesai ${sliderEnd.toFixed(1)}s</span>
-          </div>
-          <div class="music-range" data-music-range>
-            <div class="music-range-track"><div class="music-range-fill"></div></div>
-            <input type="range" data-range-start aria-label="Mulai potongan backsound" min="0" max="${rawDuration.toFixed(2)}" step="0.1" value="${sliderStart.toFixed(1)}"${trackDisabled}>
-            <input type="range" data-range-end aria-label="Selesai potongan backsound" min="0" max="${rawDuration.toFixed(2)}" step="0.1" value="${sliderEnd.toFixed(1)}"${trackDisabled}>
+          <div class="music-range-row">
+            <span class="music-range-label" data-range-start-label>Mulai ${sliderStart.toFixed(1)}s</span>
+            <div class="music-range" data-music-range>
+              <div class="music-range-track"><div class="music-range-fill"></div></div>
+              <input type="range" data-range-start aria-label="Mulai potongan backsound" min="0" max="${rawDuration.toFixed(2)}" step="0.1" value="${sliderStart.toFixed(1)}"${trackDisabled}>
+              <input type="range" data-range-end aria-label="Selesai potongan backsound" min="0" max="${rawDuration.toFixed(2)}" step="0.1" value="${sliderEnd.toFixed(1)}"${trackDisabled}>
+            </div>
+            <span class="music-range-label" data-range-end-label>Selesai ${sliderEnd.toFixed(1)}s</span>
           </div>`
           : "";
 
+        card.dataset.duration = hasDuration ? String(rawDuration) : "0";
+        card.dataset.volumeCustom = hasCustomVolume ? "1" : "0";
+
         card.innerHTML = `
           <div class="music-card-main">
-            <div>
+            <div class="music-title-wrap">
               <div class="music-name">${escapeHtml(file)}</div>
               <div class="music-meta tabular-num">${durationText} · ${sizeText}</div>
             </div>
-            <span class="clip-badge-status ${badgeClass}">${escapeHtml(status)}</span>
+            <div class="music-card-right">
+              <span class="clip-badge-status ${badgeClass}">${escapeHtml(status)}</span>
+              <button class="btn btn-secondary btn-sm" type="button" data-reset-track${trackDisabled}>Reset</button>
+              <button class="btn btn-secondary btn-sm" type="button" data-toggle>${item.enabled ? "Nonaktifkan" : "Aktifkan"}</button>
+            </div>
           </div>
           ${errorHtml}
           ${rangeHtml}
-          <audio class="music-audio" controls preload="none" src="/api/products/${currentSlug}/media/music/${encodeURIComponent(file)}"></audio>
-          <div class="music-track-settings"${trackSettingsSupported ? "" : ` title="Setelan per track membutuhkan restart aplikasi"`}>
-            <label>Volume
-              <input type="number" data-track-volume min="0" max="1" step="0.01" value="${escapeHtml(volumeValue)}" placeholder="${escapeHtml(volumePlaceholder)}"${trackDisabled}>
+          <div class="music-volume-row">
+            <label class="music-vol">Vol
+              <input type="range" data-track-volume min="0" max="1" step="0.01" value="${volumeSliderValue.toFixed(2)}"${trackDisabled}>
+              <span class="music-vol-value" data-vol-value></span>
             </label>
-            <label>Mulai (dtk)
-              <input type="number" data-track-start min="0" step="0.1" ${maxTime} value="${escapeHtml(startValue)}"${trackDisabled}>
-            </label>
-            <label>Selesai (dtk)
-              <input type="number" data-track-end min="0" step="0.1" ${maxTime} value="${escapeHtml(endValue)}" placeholder="akhir track"${trackDisabled}>
-            </label>
-          </div>
-          <div class="music-card-actions">
-            <button class="btn btn-secondary btn-sm" type="button" data-reset-track${trackDisabled}>Reset</button>
-            <button class="btn btn-secondary btn-sm" type="button" data-toggle>${item.enabled ? "Nonaktifkan" : "Aktifkan"}</button>
+            <audio class="music-audio" controls preload="none" src="/api/products/${currentSlug}/media/music/${encodeURIComponent(file)}"></audio>
           </div>
         `;
+
+        updateTrackVolumeLabel(card);
+        const volumeSlider = card.querySelector("[data-track-volume]");
+        if (volumeSlider) {
+          volumeSlider.addEventListener("input", () => {
+            card.dataset.volumeCustom = "1";
+            updateTrackVolumeLabel(card);
+          });
+        }
 
         const toggle = card.querySelector("[data-toggle]");
         if (toggle) {
@@ -2116,19 +2135,32 @@
         const reset = card.querySelector("[data-reset-track]");
         if (reset) {
           reset.addEventListener("click", () => {
-            card.querySelector("[data-track-volume]").value = "";
-            card.querySelector("[data-track-start]").value = "0";
-            card.querySelector("[data-track-end]").value = "";
-            const startInput = card.querySelector("[data-track-start]");
-            const endInput = card.querySelector("[data-track-end]");
-            if (startInput) startInput.dispatchEvent(new Event("input"));
-            if (endInput) endInput.dispatchEvent(new Event("input"));
+            card.dataset.volumeCustom = "0";
+            const vol = card.querySelector("[data-track-volume]");
+            if (vol) vol.value = fallbackVolume.toFixed(2);
+            updateTrackVolumeLabel(card);
+            const startRange = card.querySelector("[data-range-start]");
+            const endRange = card.querySelector("[data-range-end]");
+            if (startRange && endRange) {
+              startRange.value = "0";
+              endRange.value = endRange.max;
+              if (typeof card._syncMusicRange === "function") card._syncMusicRange();
+            }
             showToast(`Setelan track ${file} dikosongkan. Klik Simpan Pengaturan untuk menerapkan.`, "info");
           });
         }
         setupMusicRange(card, rawDuration);
         container.appendChild(card);
       }
+    }
+
+    function updateTrackVolumeLabel(card) {
+      const slider = card.querySelector("[data-track-volume]");
+      const label = card.querySelector("[data-vol-value]");
+      if (!slider || !label) return;
+      const value = clampNumber(Number(slider.value), 0, 1);
+      const pct = Math.round(value * 100);
+      label.textContent = card.dataset.volumeCustom === "1" ? `${pct}%` : `default ${pct}%`;
     }
 
     function setupMusicRange(card, duration) {
@@ -2140,11 +2172,9 @@
 
       const startRange = range.querySelector("[data-range-start]");
       const endRange = range.querySelector("[data-range-end]");
-      const startNumber = card.querySelector("[data-track-start]");
-      const endNumber = card.querySelector("[data-track-end]");
       const startLabel = card.querySelector("[data-range-start-label]");
       const endLabel = card.querySelector("[data-range-end-label]");
-      if (!startRange || !endRange || !startNumber || !endNumber) return;
+      if (!startRange || !endRange) return;
 
       const gap = 0.1;
       const format = (value) => `${value.toFixed(1)}s`;
@@ -2152,35 +2182,10 @@
       function updateVisual() {
         const start = clampNumber(Number(startRange.value), 0, max);
         const end = clampNumber(Number(endRange.value), 0, max);
-        const startPct = (start / max) * 100;
-        const endPct = (end / max) * 100;
-        range.style.setProperty("--range-start", `${startPct}%`);
-        range.style.setProperty("--range-end", `${endPct}%`);
+        range.style.setProperty("--range-start", `${(start / max) * 100}%`);
+        range.style.setProperty("--range-end", `${(end / max) * 100}%`);
         if (startLabel) startLabel.textContent = `Mulai ${format(start)}`;
         if (endLabel) endLabel.textContent = `Selesai ${format(end)}`;
-      }
-
-      function syncFromNumbers() {
-        const rawStart = Number(startNumber.value);
-        const endText = endNumber.value.trim();
-        const rawEnd = endText === "" ? max : Number(endText);
-
-        let start = Number.isFinite(rawStart) ? clampNumber(rawStart, 0, max) : 0;
-        let end = Number.isFinite(rawEnd) ? clampNumber(rawEnd, 0, max) : max;
-
-        if (end <= start) {
-          if (start + gap <= max) end = start + gap;
-          else start = Math.max(0, end - gap);
-        }
-
-        const startChanged = !Number.isFinite(rawStart) || start !== rawStart;
-        const endChanged = endText !== "" && (!Number.isFinite(rawEnd) || end !== rawEnd);
-        if (startChanged) startNumber.value = start.toFixed(1);
-        if (endChanged) endNumber.value = end >= max - 0.05 ? "" : end.toFixed(1);
-
-        startRange.value = String(start);
-        endRange.value = String(end);
-        updateVisual();
       }
 
       function onRangeInput(isStart) {
@@ -2195,17 +2200,13 @@
           endRange.value = String(end);
         }
 
-        startNumber.value = start.toFixed(1);
-        endNumber.value = end >= max - 0.05 ? "" : end.toFixed(1);
         updateVisual();
       }
 
       startRange.addEventListener("input", () => onRangeInput(true));
       endRange.addEventListener("input", () => onRangeInput(false));
-      startNumber.addEventListener("input", syncFromNumbers);
-      endNumber.addEventListener("input", syncFromNumbers);
-
-      syncFromNumbers();
+      card._syncMusicRange = updateVisual;
+      updateVisual();
     }
 
     async function toggleMusicAsset(file, enabled, button) {
@@ -2282,8 +2283,12 @@
         ? volume.toFixed(2)
         : "0.12";
       if (!Number.isFinite(volume)) return;
-      document.querySelectorAll("#listMusic [data-track-volume]").forEach((input) => {
-        input.placeholder = `default ${volume.toFixed(2)}`;
+      document.querySelectorAll("#listMusic [data-music-file]").forEach((card) => {
+        if (card.dataset.volumeCustom === "1") return;
+        const slider = card.querySelector("[data-track-volume]");
+        if (!slider) return;
+        slider.value = volume.toFixed(2);
+        updateTrackVolumeLabel(card);
       });
     }
 
@@ -2299,19 +2304,23 @@
         const file = card.dataset.musicFile;
         if (!file) continue;
 
-        const volumeRaw = (card.querySelector("[data-track-volume]")?.value || "").trim();
-        const startRaw = (card.querySelector("[data-track-start]")?.value || "").trim();
-        const endRaw = (card.querySelector("[data-track-end]")?.value || "").trim();
-
-        const volumeNumber = volumeRaw === "" ? null : Number(volumeRaw);
-        const startNumber = startRaw === "" ? 0 : Number(startRaw);
-        const endNumber = endRaw === "" ? null : Number(endRaw);
-
-        const trackVolume = volumeNumber !== null && Number.isFinite(volumeNumber)
-          ? Math.max(0, Math.min(1, volumeNumber))
+        const volumeCustom = card.dataset.volumeCustom === "1";
+        const volumeSlider = card.querySelector("[data-track-volume]");
+        const trackVolume = volumeCustom && volumeSlider
+          ? clampNumber(Number(volumeSlider.value), 0, 1)
           : null;
-        const startSeconds = Number.isFinite(startNumber) ? Math.max(0, startNumber) : 0;
-        const endSeconds = endNumber !== null && Number.isFinite(endNumber) ? Math.max(0, endNumber) : null;
+
+        const duration = Number(card.dataset.duration) || 0;
+        const startRange = card.querySelector("[data-range-start]");
+        const endRange = card.querySelector("[data-range-end]");
+        const startSeconds = startRange ? Math.max(0, Number(startRange.value) || 0) : 0;
+        let endSeconds = null;
+        if (endRange) {
+          const endNumber = Number(endRange.value);
+          if (Number.isFinite(endNumber) && !(duration > 0 && endNumber >= duration - 0.05)) {
+            endSeconds = endNumber;
+          }
+        }
 
         if (trackVolume !== null || startSeconds > 0 || endSeconds !== null) {
           tracks[file] = { volume: trackVolume, startSeconds, endSeconds };
